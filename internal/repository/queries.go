@@ -19,17 +19,17 @@ func New(db *sql.DB) *Queries {
 
 func (q *Queries) CreateSubscription(ctx context.Context, arg CreateSubscriptionParams) (Subscription, error) {
 	row := q.db.QueryRowContext(ctx,
-		`INSERT INTO subscriptions (user_id, name, service, billing_day, notes)
-		 VALUES (?, ?, ?, ?, ?)
-		 RETURNING id, user_id, name, service, billing_day, notes, created_at, updated_at`,
-		arg.UserID, arg.Name, arg.Service, arg.BillingDay, arg.Notes,
+		`INSERT INTO subscriptions (user_id, name, service, billing_day, notes, auth_token)
+		 VALUES (?, ?, ?, ?, ?, ?)
+		 RETURNING id, user_id, name, service, billing_day, notes, auth_token, created_at, updated_at`,
+		arg.UserID, arg.Name, arg.Service, arg.BillingDay, arg.Notes, arg.AuthToken,
 	)
 	return scanSubscriptionRow(row)
 }
 
 func (q *Queries) GetSubscription(ctx context.Context, id, userID int64) (Subscription, error) {
 	row := q.db.QueryRowContext(ctx,
-		`SELECT id, user_id, name, service, billing_day, notes, created_at, updated_at
+		`SELECT id, user_id, name, service, billing_day, notes, auth_token, created_at, updated_at
 		 FROM subscriptions WHERE id = ? AND user_id = ? LIMIT 1`,
 		id, userID,
 	)
@@ -38,7 +38,7 @@ func (q *Queries) GetSubscription(ctx context.Context, id, userID int64) (Subscr
 
 func (q *Queries) ListSubscriptions(ctx context.Context, userID int64) ([]Subscription, error) {
 	rows, err := q.db.QueryContext(ctx,
-		`SELECT id, user_id, name, service, billing_day, notes, created_at, updated_at
+		`SELECT id, user_id, name, service, billing_day, notes, auth_token, created_at, updated_at
 		 FROM subscriptions WHERE user_id = ? ORDER BY name`,
 		userID,
 	)
@@ -60,7 +60,7 @@ func (q *Queries) ListSubscriptions(ctx context.Context, userID int64) ([]Subscr
 
 func (q *Queries) ListAllSubscriptions(ctx context.Context) ([]Subscription, error) {
 	rows, err := q.db.QueryContext(ctx,
-		`SELECT id, user_id, name, service, billing_day, notes, created_at, updated_at
+		`SELECT id, user_id, name, service, billing_day, notes, auth_token, created_at, updated_at
 		 FROM subscriptions ORDER BY name`,
 	)
 	if err != nil {
@@ -82,10 +82,10 @@ func (q *Queries) ListAllSubscriptions(ctx context.Context) ([]Subscription, err
 func (q *Queries) UpdateSubscription(ctx context.Context, arg UpdateSubscriptionParams) (Subscription, error) {
 	row := q.db.QueryRowContext(ctx,
 		`UPDATE subscriptions
-		 SET name=?, service=?, billing_day=?, notes=?, updated_at=CURRENT_TIMESTAMP
+		 SET name=?, service=?, billing_day=?, notes=?, auth_token=?, updated_at=CURRENT_TIMESTAMP
 		 WHERE id=? AND user_id=?
-		 RETURNING id, user_id, name, service, billing_day, notes, created_at, updated_at`,
-		arg.Name, arg.Service, arg.BillingDay, arg.Notes, arg.ID, arg.UserID,
+		 RETURNING id, user_id, name, service, billing_day, notes, auth_token, created_at, updated_at`,
+		arg.Name, arg.Service, arg.BillingDay, arg.Notes, arg.AuthToken, arg.ID, arg.UserID,
 	)
 	return scanSubscriptionRow(row)
 }
@@ -262,6 +262,70 @@ func (q *Queries) ListProviderUsage(ctx context.Context) ([]ProviderUsage, error
 	return usages, rows.Err()
 }
 
+// --- Subscription Usage ---
+
+func (q *Queries) UpsertSubscriptionUsage(ctx context.Context, arg UpsertSubscriptionUsageParams) error {
+	isBlockedInt := 0
+	if arg.IsBlocked {
+		isBlockedInt = 1
+	}
+	_, err := q.db.ExecContext(ctx,
+		`INSERT INTO subscription_usage (subscription_id, current_usage_seconds, total_limit_seconds, is_blocked, fetched_at)
+		 VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
+		 ON CONFLICT(subscription_id) DO UPDATE SET
+			current_usage_seconds=excluded.current_usage_seconds,
+			total_limit_seconds=excluded.total_limit_seconds,
+			is_blocked=excluded.is_blocked,
+			fetched_at=CURRENT_TIMESTAMP`,
+		arg.SubscriptionID, arg.CurrentUsageSeconds, arg.TotalLimitSeconds, isBlockedInt,
+	)
+	return err
+}
+
+func (q *Queries) ListSubscriptionUsage(ctx context.Context) ([]SubscriptionUsage, error) {
+	rows, err := q.db.QueryContext(ctx,
+		`SELECT subscription_id, current_usage_seconds, total_limit_seconds, is_blocked, fetched_at
+		 FROM subscription_usage`,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var usages []SubscriptionUsage
+	for rows.Next() {
+		var u SubscriptionUsage
+		var fetchedAt string
+		var isBlockedInt int
+		err := rows.Scan(&u.SubscriptionID, &u.CurrentUsageSeconds, &u.TotalLimitSeconds, &isBlockedInt, &fetchedAt)
+		if err != nil {
+			return nil, err
+		}
+		u.FetchedAt = parseTime(fetchedAt)
+		u.IsBlocked = isBlockedInt == 1
+		usages = append(usages, u)
+	}
+	return usages, rows.Err()
+}
+
+func (q *Queries) GetSubscriptionUsage(ctx context.Context, subscriptionID int64) (SubscriptionUsage, error) {
+	row := q.db.QueryRowContext(ctx,
+		`SELECT subscription_id, current_usage_seconds, total_limit_seconds, is_blocked, fetched_at
+		 FROM subscription_usage WHERE subscription_id = ? LIMIT 1`,
+		subscriptionID,
+	)
+	var u SubscriptionUsage
+	var fetchedAt string
+	var isBlockedInt int
+	err := row.Scan(&u.SubscriptionID, &u.CurrentUsageSeconds, &u.TotalLimitSeconds, &isBlockedInt, &fetchedAt)
+	if err != nil {
+		return u, err
+	}
+	u.FetchedAt = parseTime(fetchedAt)
+	u.IsBlocked = isBlockedInt == 1
+	return u, nil
+}
+
 // --- Notification Log ---
 
 func (q *Queries) CreateNotificationLog(ctx context.Context, arg CreateNotificationLogParams) error {
@@ -304,7 +368,7 @@ func (q *Queries) ListNotificationLogs(ctx context.Context, userID int64) ([]Not
 func scanSubscriptionRow(row *sql.Row) (Subscription, error) {
 	var s Subscription
 	var createdAt, updatedAt string
-	err := row.Scan(&s.ID, &s.UserID, &s.Name, &s.Service, &s.BillingDay, &s.Notes, &createdAt, &updatedAt)
+	err := row.Scan(&s.ID, &s.UserID, &s.Name, &s.Service, &s.BillingDay, &s.Notes, &s.AuthToken, &createdAt, &updatedAt)
 	if err != nil {
 		return s, err
 	}
@@ -316,7 +380,7 @@ func scanSubscriptionRow(row *sql.Row) (Subscription, error) {
 func scanSubscriptionRows(rows *sql.Rows) (Subscription, error) {
 	var s Subscription
 	var createdAt, updatedAt string
-	err := rows.Scan(&s.ID, &s.UserID, &s.Name, &s.Service, &s.BillingDay, &s.Notes, &createdAt, &updatedAt)
+	err := rows.Scan(&s.ID, &s.UserID, &s.Name, &s.Service, &s.BillingDay, &s.Notes, &s.AuthToken, &createdAt, &updatedAt)
 	if err != nil {
 		return s, err
 	}

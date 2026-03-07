@@ -78,23 +78,18 @@ func (h *Handler) Register(mux *http.ServeMux) {
 	// Claude Provider
 	apiMux.HandleFunc("GET /api/providers/claude/login-info", h.claudeLoginInfo)
 	apiMux.HandleFunc("POST /api/providers/claude/login", h.claudeLogin)
-	apiMux.HandleFunc("GET /api/providers/claude/usage", h.claudeUsage)
-	apiMux.HandleFunc("GET /api/providers/usage/cached", h.cachedUsage)
 
 	// Google One Provider
 	apiMux.HandleFunc("GET /api/providers/googleone/login-info", h.googleOneLoginInfo)
 	apiMux.HandleFunc("POST /api/providers/googleone/login", h.googleOneLogin)
-	apiMux.HandleFunc("GET /api/providers/googleone/usage", h.googleOneUsage)
 
 	// Z.ai Provider
 	apiMux.HandleFunc("GET /api/providers/zai/login-info", h.zaiLoginInfo)
 	apiMux.HandleFunc("POST /api/providers/zai/login", h.zaiLogin)
-	apiMux.HandleFunc("GET /api/providers/zai/usage", h.zaiUsage)
 
 	// OpenAI Provider
 	apiMux.HandleFunc("GET /api/providers/openai/login-info", h.openaiLoginInfo)
 	apiMux.HandleFunc("POST /api/providers/openai/login", h.openaiLogin)
-	apiMux.HandleFunc("GET /api/providers/openai/usage", h.openaiUsage)
 
 	// Subscriptions
 	apiMux.HandleFunc("GET /api/subscriptions", h.listSubscriptions)
@@ -102,6 +97,8 @@ func (h *Handler) Register(mux *http.ServeMux) {
 	apiMux.HandleFunc("GET /api/subscriptions/{id}", h.getSubscription)
 	apiMux.HandleFunc("PUT /api/subscriptions/{id}", h.updateSubscription)
 	apiMux.HandleFunc("DELETE /api/subscriptions/{id}", h.deleteSubscription)
+	apiMux.HandleFunc("GET /api/subscriptions/usage/cached", h.cachedSubscriptionUsage)
+	apiMux.HandleFunc("POST /api/subscriptions/usage/refresh", h.refreshSubscriptionsUsage)
 
 	// Web Push
 	apiMux.HandleFunc("GET /api/vapid-public-key", h.getVapidPublicKey)
@@ -200,28 +197,6 @@ func (h *Handler) claudeLogin(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{"status": "logged_in"})
 }
 
-func (h *Handler) claudeUsage(w http.ResponseWriter, r *http.Request) {
-	info, err := h.claudeProvider.FetchUsageInfo(r.Context())
-	if err != nil {
-		if errors.Is(err, provider.ErrUnauthorized) {
-			writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "relogin_required"})
-			return
-		}
-		slog.Error("fetch claude usage", "error", err)
-		writeError(w, http.StatusInternalServerError, "failed to fetch usage")
-		return
-	}
-
-	// Update the cache immediately
-	_ = h.repo.UpsertProviderUsage(r.Context(), repository.UpsertProviderUsageParams{
-		ProviderName:        h.claudeProvider.Name(),
-		CurrentUsageSeconds: info.CurrentUsageSeconds,
-		TotalLimitSeconds:   info.TotalLimitSeconds,
-		IsBlocked:           info.IsBlocked,
-	})
-	writeJSON(w, http.StatusOK, info)
-}
-
 // --- Google One Provider ---
 
 func (h *Handler) googleOneLoginInfo(w http.ResponseWriter, r *http.Request) {
@@ -255,31 +230,6 @@ func (h *Handler) googleOneLogin(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusOK, map[string]string{"status": "logged_in"})
-}
-
-func (h *Handler) googleOneUsage(w http.ResponseWriter, r *http.Request) {
-	info, err := h.googleOneProvider.FetchUsageInfo(r.Context())
-	if err != nil {
-		if errors.Is(err, provider.ErrUnauthorized) {
-			writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "relogin_required"})
-			return
-		}
-		slog.Error("fetch google one usage", "error", err)
-		writeError(w, http.StatusInternalServerError, "failed to fetch usage")
-		return
-	}
-
-	// Update the cache immediately
-	if h.repo != nil {
-		_ = h.repo.UpsertProviderUsage(r.Context(), repository.UpsertProviderUsageParams{
-			ProviderName:        h.googleOneProvider.Name(),
-			CurrentUsageSeconds: info.CurrentUsageSeconds,
-			TotalLimitSeconds:   info.TotalLimitSeconds,
-			IsBlocked:           info.IsBlocked,
-		})
-	}
-
-	writeJSON(w, http.StatusOK, info)
 }
 
 // --- Z.ai Provider ---
@@ -317,28 +267,6 @@ func (h *Handler) zaiLogin(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{"status": "logged_in"})
 }
 
-func (h *Handler) zaiUsage(w http.ResponseWriter, r *http.Request) {
-	info, err := h.zaiProvider.FetchUsageInfo(r.Context())
-	if err != nil {
-		if errors.Is(err, provider.ErrUnauthorized) {
-			writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "relogin_required"})
-			return
-		}
-		slog.Error("fetch z.ai usage", "error", err)
-		writeError(w, http.StatusInternalServerError, "failed to fetch usage")
-		return
-	}
-
-	_ = h.repo.UpsertProviderUsage(r.Context(), repository.UpsertProviderUsageParams{
-		ProviderName:        h.zaiProvider.Name(),
-		CurrentUsageSeconds: info.CurrentUsageSeconds,
-		TotalLimitSeconds:   info.TotalLimitSeconds,
-		IsBlocked:           info.IsBlocked,
-	})
-
-	writeJSON(w, http.StatusOK, info)
-}
-
 // --- OpenAI Provider ---
 
 func (h *Handler) openaiLoginInfo(w http.ResponseWriter, r *http.Request) {
@@ -374,45 +302,6 @@ func (h *Handler) openaiLogin(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{"status": "logged_in"})
 }
 
-func (h *Handler) openaiUsage(w http.ResponseWriter, r *http.Request) {
-	info, err := h.openaiProvider.FetchUsageInfo(r.Context())
-	if err != nil {
-		if errors.Is(err, provider.ErrUnauthorized) {
-			writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "relogin_required"})
-			return
-		}
-		slog.Error("fetch openai usage", "error", err)
-		writeError(w, http.StatusInternalServerError, "failed to fetch usage")
-		return
-	}
-
-	// Update the cache immediately
-	if h.repo != nil {
-		_ = h.repo.UpsertProviderUsage(r.Context(), repository.UpsertProviderUsageParams{
-			ProviderName:        h.openaiProvider.Name(),
-			CurrentUsageSeconds: info.CurrentUsageSeconds,
-			TotalLimitSeconds:   info.TotalLimitSeconds,
-			IsBlocked:           info.IsBlocked,
-		})
-	}
-
-	writeJSON(w, http.StatusOK, info)
-}
-
-func (h *Handler) cachedUsage(w http.ResponseWriter, r *http.Request) {
-	usages, err := h.repo.ListProviderUsage(r.Context())
-	if err != nil {
-		slog.Error("list cached usage", "error", err)
-		writeError(w, http.StatusInternalServerError, "failed to get cached usage")
-		return
-	}
-	if usages == nil {
-		usages = []repository.ProviderUsage{}
-	}
-
-	writeJSON(w, http.StatusOK, usages)
-}
-
 // --- Subscriptions ---
 
 func (h *Handler) listSubscriptions(w http.ResponseWriter, r *http.Request) {
@@ -446,6 +335,7 @@ func (h *Handler) createSubscription(w http.ResponseWriter, r *http.Request) {
 		Service    string `json:"service"`
 		BillingDay int64  `json:"billing_day"`
 		Notes      string `json:"notes"`
+		AuthToken  string `json:"auth_token"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid request body")
@@ -462,6 +352,7 @@ func (h *Handler) createSubscription(w http.ResponseWriter, r *http.Request) {
 		Service:    req.Service,
 		BillingDay: req.BillingDay,
 		Notes:      req.Notes,
+		AuthToken:  req.AuthToken,
 	})
 	if err != nil {
 		slog.Error("create subscription", "error", err)
@@ -513,6 +404,7 @@ func (h *Handler) updateSubscription(w http.ResponseWriter, r *http.Request) {
 		Service    string `json:"service"`
 		BillingDay int64  `json:"billing_day"`
 		Notes      string `json:"notes"`
+		AuthToken  string `json:"auth_token"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid request body")
@@ -530,6 +422,7 @@ func (h *Handler) updateSubscription(w http.ResponseWriter, r *http.Request) {
 		Service:    req.Service,
 		BillingDay: req.BillingDay,
 		Notes:      req.Notes,
+		AuthToken:  req.AuthToken,
 	})
 	if err == sql.ErrNoRows {
 		writeError(w, http.StatusNotFound, "subscription not found")
@@ -561,6 +454,92 @@ func (h *Handler) deleteSubscription(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+func (h *Handler) cachedSubscriptionUsage(w http.ResponseWriter, r *http.Request) {
+	usages, err := h.repo.ListSubscriptionUsage(r.Context())
+	if err != nil {
+		slog.Error("list cached sub usage", "error", err)
+		writeError(w, http.StatusInternalServerError, "failed to get cached sub usage")
+		return
+	}
+	if usages == nil {
+		usages = []repository.SubscriptionUsage{}
+	}
+
+	writeJSON(w, http.StatusOK, usages)
+}
+
+func (h *Handler) refreshSubscriptionsUsage(w http.ResponseWriter, r *http.Request) {
+	user, ok := auth.UserFromContext(r.Context())
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+
+	subs, err := h.repo.ListSubscriptions(r.Context(), user.ID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to list subscriptions")
+		return
+	}
+
+	hasReloginError := false
+
+	for _, sub := range subs {
+		if sub.AuthToken == "" {
+			continue
+		}
+
+		var p provider.Provider
+		switch sub.Service {
+		case "claude":
+			p = h.claudeProvider
+		case "openai":
+			p = h.openaiProvider
+		case "googleone":
+			p = h.googleOneProvider
+		case "zai":
+			p = h.zaiProvider
+		default:
+			continue
+		}
+
+		creds := map[string]string{
+			"session_key":    sub.AuthToken,
+			"session_token":  sub.AuthToken,
+			"session_cookie": sub.AuthToken,
+		}
+
+		err := p.Login(r.Context(), creds)
+		if err != nil {
+			slog.Error("failed to login provider for sub", "subID", sub.ID, "error", err)
+			hasReloginError = true
+			continue
+		}
+
+		info, err := p.FetchUsageInfo(r.Context())
+		if err != nil {
+			slog.Error("failed to fetch usage info for sub", "subID", sub.ID, "error", err)
+			if errors.Is(err, provider.ErrUnauthorized) {
+				hasReloginError = true
+			}
+			continue
+		}
+
+		_ = h.repo.UpsertSubscriptionUsage(r.Context(), repository.UpsertSubscriptionUsageParams{
+			SubscriptionID:      sub.ID,
+			CurrentUsageSeconds: info.CurrentUsageSeconds,
+			TotalLimitSeconds:   info.TotalLimitSeconds,
+			IsBlocked:           info.IsBlocked,
+		})
+	}
+
+	if hasReloginError {
+		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "relogin_required", "message": "Failed to refresh some subscriptions due to invalid auth tokens. Please check your tokens."})
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]string{"status": "refreshed"})
 }
 
 // --- Web Push ---
