@@ -3,6 +3,7 @@ package testprovider
 import (
 	"context"
 	"errors"
+	"fmt"
 	"time"
 
 	"github.com/korjavin/substracker/internal/provider"
@@ -43,7 +44,7 @@ func (p *TestProvider) Login(ctx context.Context, credentials map[string]string)
 // FetchUsageInfo simulates fetching usage information. It requires the provider to be authenticated.
 func (p *TestProvider) FetchUsageInfo(ctx context.Context) (*provider.UsageInfo, error) {
 	if !p.authenticated {
-		return nil, errors.New("not authenticated")
+		return nil, fmt.Errorf("testprovider: %w", provider.ErrUnauthorized)
 	}
 
 	return &provider.UsageInfo{
