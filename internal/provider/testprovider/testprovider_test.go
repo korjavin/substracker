@@ -2,8 +2,11 @@ package testprovider
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
+
+	"github.com/korjavin/substracker/internal/provider"
 )
 
 func TestTestProvider_Name(t *testing.T) {
@@ -45,8 +48,8 @@ func TestTestProvider_FetchUsageInfo(t *testing.T) {
 
 	// Test case: Not authenticated
 	_, err := p.FetchUsageInfo(ctx)
-	if err == nil || err.Error() != "not authenticated" {
-		t.Errorf("expected not authenticated error, got %v", err)
+	if !errors.Is(err, provider.ErrUnauthorized) {
+		t.Errorf("expected ErrUnauthorized, got %v", err)
 	}
 
 	// Test case: Authenticated

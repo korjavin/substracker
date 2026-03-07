@@ -4,10 +4,13 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"log/slog"
 	"net/http"
 	"strconv"
 
+	"github.com/korjavin/substracker/internal/provider"
+	"github.com/korjavin/substracker/internal/provider/claudeprovider"
 	"github.com/korjavin/substracker/internal/repository"
 	"github.com/korjavin/substracker/internal/service"
 )
@@ -16,14 +19,25 @@ type Handler struct {
 	repo           *repository.Queries
 	notifSvc       *service.NotificationService
 	vapidPublicKey string
+	claudeProvider provider.Provider
 }
 
 func NewHandler(repo *repository.Queries, notifSvc *service.NotificationService, vapidPublicKey string) *Handler {
-	return &Handler{repo: repo, notifSvc: notifSvc, vapidPublicKey: vapidPublicKey}
+	return &Handler{
+		repo:           repo,
+		notifSvc:       notifSvc,
+		vapidPublicKey: vapidPublicKey,
+		claudeProvider: claudeprovider.NewClaudeProvider(),
+	}
 }
 
 func (h *Handler) Register(mux *http.ServeMux) {
 	mux.HandleFunc("GET /health", h.health)
+
+	// Claude Provider
+	mux.HandleFunc("GET /api/providers/claude/login-info", h.claudeLoginInfo)
+	mux.HandleFunc("POST /api/providers/claude/login", h.claudeLogin)
+	mux.HandleFunc("GET /api/providers/claude/usage", h.claudeUsage)
 
 	// Subscriptions
 	mux.HandleFunc("GET /api/subscriptions", h.listSubscriptions)
@@ -67,6 +81,48 @@ func writeError(w http.ResponseWriter, status int, msg string) {
 
 func (h *Handler) health(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+}
+
+// --- Claude Provider ---
+
+func (h *Handler) claudeLoginInfo(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, http.StatusOK, map[string]string{
+		"url":          "https://claude.ai/",
+		"instructions": "Log in to claude.ai, open Developer Tools -> Application -> Cookies, and copy the value of the 'sessionKey' cookie.",
+	})
+}
+
+func (h *Handler) claudeLogin(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		SessionKey string `json:"session_key"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+
+	err := h.claudeProvider.Login(r.Context(), map[string]string{"session_key": req.SessionKey})
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]string{"status": "logged_in"})
+}
+
+func (h *Handler) claudeUsage(w http.ResponseWriter, r *http.Request) {
+	info, err := h.claudeProvider.FetchUsageInfo(r.Context())
+	if err != nil {
+		if errors.Is(err, provider.ErrUnauthorized) {
+			writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "relogin_required"})
+			return
+		}
+		slog.Error("fetch claude usage", "error", err)
+		writeError(w, http.StatusInternalServerError, "failed to fetch usage")
+		return
+	}
+
+	writeJSON(w, http.StatusOK, info)
 }
 
 // --- Subscriptions ---

@@ -2,8 +2,12 @@ package provider
 
 import (
 	"context"
+	"errors"
 	"time"
 )
+
+// ErrUnauthorized is returned when the provider session is invalid or expired.
+var ErrUnauthorized = errors.New("unauthorized: relogin required")
 
 // UsageInfo represents the usage information retrieved from a provider.
 type UsageInfo struct {
