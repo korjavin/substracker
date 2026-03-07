@@ -161,3 +161,32 @@ func AuthMiddleware(secret string) func(http.Handler) http.Handler {
 		})
 	}
 }
+
+// FetchTelegramBotUsername queries the Telegram API to get the bot's username using its token.
+func FetchTelegramBotUsername(token string) (string, error) {
+	resp, err := http.Get(fmt.Sprintf("https://api.telegram.org/bot%s/getMe", token))
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("failed to fetch bot info: status %d", resp.StatusCode)
+	}
+
+	var data struct {
+		Ok     bool `json:"ok"`
+		Result struct {
+			Username string `json:"username"`
+		} `json:"result"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&data); err != nil {
+		return "", err
+	}
+
+	if !data.Ok || data.Result.Username == "" {
+		return "", fmt.Errorf("failed to parse bot username from response")
+	}
+
+	return data.Result.Username, nil
+}

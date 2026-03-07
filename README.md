@@ -40,7 +40,6 @@ Open http://localhost:5454
 | `VAPID_PRIVATE_KEY` | VAPID private key for web push | Optional |
 | `VAPID_SUBJECT` | VAPID subject, e.g. `mailto:you@example.com` | If VAPID set |
 | `SESSION_SECRET` | Secret key for signing session cookies | Yes |
-| `TELEGRAM_BOT_USERNAME` | Telegram bot username for Login Widget | Yes |
 | `QUOTA_POLL_INTERVAL` | Interval to check provider usage quota | Optional (default: `15m`) |
 
 ## Generating VAPID Keys

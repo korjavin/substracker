@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/korjavin/substracker/internal/api"
+	"github.com/korjavin/substracker/internal/auth"
 	"github.com/korjavin/substracker/internal/db"
 	"github.com/korjavin/substracker/internal/middleware"
 	"github.com/korjavin/substracker/internal/provider"
@@ -64,7 +65,18 @@ func main() {
 		slog.Error("SESSION_SECRET environment variable is required")
 		os.Exit(1)
 	}
+
 	telegramBotUsername := os.Getenv("TELEGRAM_BOT_USERNAME")
+	if telegramBotUsername == "" && notifCfg.TelegramBotToken != "" {
+		slog.Info("fetching telegram bot username from API")
+		username, err := auth.FetchTelegramBotUsername(notifCfg.TelegramBotToken)
+		if err != nil {
+			slog.Error("failed to fetch telegram bot username", "error", err)
+		} else {
+			telegramBotUsername = username
+			slog.Info("successfully fetched telegram bot username", "username", telegramBotUsername)
+		}
+	}
 
 	handler := api.NewHandler(repo, notifSvc, notifCfg.VAPIDPublicKey, sessionSecret, notifCfg.TelegramBotToken, telegramBotUsername)
 	handler.Register(mux)
