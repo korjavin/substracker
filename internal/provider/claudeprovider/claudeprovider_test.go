@@ -47,8 +47,11 @@ func TestClaudeProvider_Login(t *testing.T) {
 	if err != nil {
 		t.Errorf("expected no error for valid session_key, got %v", err)
 	}
-	if p.sessionKey != validKey {
-		t.Errorf("expected sessionKey to be '%s', got '%s'", validKey, p.sessionKey)
+	p.mu.RLock()
+	gotKey := p.sessionKey
+	p.mu.RUnlock()
+	if gotKey != validKey {
+		t.Errorf("expected sessionKey to be '%s', got '%s'", validKey, gotKey)
 	}
 }
 

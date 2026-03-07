@@ -11,8 +11,11 @@ import (
 	"github.com/korjavin/substracker/internal/provider"
 )
 
+import "sync"
+
 // ClaudeProvider implements the Provider interface for Claude.
 type ClaudeProvider struct {
+	mu         sync.RWMutex
 	sessionKey string
 	baseURL    string // Can be overridden for testing
 	httpClient *http.Client
@@ -38,7 +41,9 @@ func (p *ClaudeProvider) Login(ctx context.Context, credentials map[string]strin
 		return errors.New("missing or empty session_key")
 	}
 
+	p.mu.Lock()
 	p.sessionKey = sessionKey
+	p.mu.Unlock()
 	return nil
 }
 
@@ -54,7 +59,11 @@ type billingInfo struct {
 
 // FetchUsageInfo retrieves the current usage information from Claude.
 func (p *ClaudeProvider) FetchUsageInfo(ctx context.Context) (*provider.UsageInfo, error) {
-	if p.sessionKey == "" {
+	p.mu.RLock()
+	sessionKey := p.sessionKey
+	p.mu.RUnlock()
+
+	if sessionKey == "" {
 		return nil, fmt.Errorf("claudeprovider: %w", provider.ErrUnauthorized)
 	}
 
@@ -64,7 +73,7 @@ func (p *ClaudeProvider) FetchUsageInfo(ctx context.Context) (*provider.UsageInf
 		return nil, fmt.Errorf("failed to create organizations request: %w", err)
 	}
 
-	req.Header.Set("Cookie", fmt.Sprintf("sessionKey=%s", p.sessionKey))
+	req.Header.Set("Cookie", fmt.Sprintf("sessionKey=%s", sessionKey))
 	req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
 
 	resp, err := p.httpClient.Do(req)
@@ -99,7 +108,7 @@ func (p *ClaudeProvider) FetchUsageInfo(ctx context.Context) (*provider.UsageInf
 		return nil, fmt.Errorf("failed to create billing request: %w", err)
 	}
 
-	billingReq.Header.Set("Cookie", fmt.Sprintf("sessionKey=%s", p.sessionKey))
+	billingReq.Header.Set("Cookie", fmt.Sprintf("sessionKey=%s", sessionKey))
 	billingReq.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
 
 	billingResp, err := p.httpClient.Do(billingReq)
