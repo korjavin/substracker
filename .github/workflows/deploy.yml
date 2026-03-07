@@ -39,21 +39,14 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git fetch origin deploy 2>/dev/null || true
-          git checkout deploy 2>/dev/null || git checkout --orphan deploy
-          git reset --hard || true
+          git checkout -B deploy
           # Update image tag in docker-compose.yml
-          sed -i "s|ghcr.io/korjavin/substracker:.*|ghcr.io/korjavin/substracker:${{ github.sha }}|g" docker-compose.yml || true
+          sed -i "s|ghcr.io/korjavin/substracker:latest|ghcr.io/korjavin/substracker:${{ github.sha }}|g" docker-compose.yml
           git add docker-compose.yml
-          git commit -m "deploy: ${{ github.sha }}" --allow-empty
+          git commit -m "deploy: ${{ github.sha }}" || echo "No changes to commit"
           git push origin deploy --force
-
       - name: Trigger Portainer webhook
-        env:
-          PORTAINER_WEBHOOK: ${{ secrets.PORTAINER_WEBHOOK }}
-        run: |
-          if [ -n "$PORTAINER_WEBHOOK" ]; then
-            curl -s -X POST "$PORTAINER_WEBHOOK"
-          else
-            echo "No webhook configured"
-          fi
+        uses: distributhor/workflow-webhook@v3
+        with:
+          webhook_url: ${{ secrets.PORTAINER_WEBHOOK }}
+          webhook_secret: "trigger"
