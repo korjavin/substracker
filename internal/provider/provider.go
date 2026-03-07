@@ -1,0 +1,26 @@
+package provider
+
+import (
+	"context"
+	"time"
+)
+
+// UsageInfo represents the usage information retrieved from a provider.
+type UsageInfo struct {
+	// ResetDate is the date when the current usage limits reset.
+	ResetDate time.Time
+	// Additional fields like current usage, total limit, etc. can be added here.
+}
+
+// Provider defines the interface for different service providers (Claude, OpenAI, Z.ai, etc.).
+type Provider interface {
+	// Name returns the name of the provider.
+	Name() string
+
+	// Login authenticates with the provider using the provided credentials.
+	Login(ctx context.Context, credentials map[string]string) error
+
+	// FetchUsageInfo retrieves the current usage information from the provider.
+	// It should be called after a successful Login.
+	FetchUsageInfo(ctx context.Context) (*UsageInfo, error)
+}
