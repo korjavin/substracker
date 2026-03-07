@@ -49,5 +49,11 @@ jobs:
           git push origin deploy --force
 
       - name: Trigger Portainer webhook
-        if: ${{ secrets.PORTAINER_WEBHOOK != '' }}
-        run: curl -s -X POST "${{ secrets.PORTAINER_WEBHOOK }}"
+        env:
+          PORTAINER_WEBHOOK: ${{ secrets.PORTAINER_WEBHOOK }}
+        run: |
+          if [ -n "$PORTAINER_WEBHOOK" ]; then
+            curl -s -X POST "$PORTAINER_WEBHOOK"
+          else
+            echo "No webhook configured"
+          fi
