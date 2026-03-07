@@ -1,0 +1,31 @@
+module github.com/korjavin/substracker
+
+go 1.24
+
+require (
+	github.com/SherClockHolmes/webpush-go v1.3.0
+	github.com/go-telegram-bot-api/telegram-bot-api v4.6.4+incompatible
+	github.com/pressly/goose/v3 v3.24.2
+	golang.org/x/time v0.9.0
+	modernc.org/sqlite v1.36.2
+)
+
+require (
+	github.com/dustin/go-humanize v1.0.1 // indirect
+	github.com/golang-jwt/jwt v3.2.2+incompatible // indirect
+	github.com/google/uuid v1.6.0 // indirect
+	github.com/mattn/go-isatty v0.0.20 // indirect
+	github.com/mfridman/interpolate v0.0.2 // indirect
+	github.com/ncruces/go-strftime v0.1.9 // indirect
+	github.com/remyoudompheng/bigfft v0.0.0-20230129092748-24d4a6f8daec // indirect
+	github.com/sethvargo/go-retry v0.3.0 // indirect
+	github.com/technoweenie/multipartstreamer v1.0.1 // indirect
+	go.uber.org/multierr v1.11.0 // indirect
+	golang.org/x/crypto v0.36.0 // indirect
+	golang.org/x/exp v0.0.0-20250305212735-054e65f0b394 // indirect
+	golang.org/x/sync v0.12.0 // indirect
+	golang.org/x/sys v0.31.0 // indirect
+	modernc.org/libc v1.61.13 // indirect
+	modernc.org/mathutil v1.7.1 // indirect
+	modernc.org/memory v1.9.1 // indirect
+)

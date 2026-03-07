@@ -1,0 +1,10 @@
+.git
+.env
+*.db
+*.db-shm
+*.db-wal
+.idea/
+.vscode/
+README.md
+agents.md
+start.sh

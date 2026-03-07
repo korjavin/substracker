@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>SubsTracker</title>
+  <link rel="stylesheet" href="/css/style.css" />
+</head>
+<body>
+
+<header>
+  <h1>SubsTracker</h1>
+  <nav>
+    <button class="tab-btn active" data-tab="subscriptions">Subscriptions</button>
+    <button class="tab-btn" data-tab="notifications">Notifications</button>
+    <button class="tab-btn" data-tab="log">Activity Log</button>
+  </nav>
+</header>
+
+<main>
+
+  <!-- ===== Subscriptions Tab ===== -->
+  <section id="subscriptions" class="tab-content active">
+    <div class="section-header">
+      <h2>Subscriptions</h2>
+      <button class="btn btn-primary" id="add-sub-btn">+ Add</button>
+    </div>
+    <div class="card table-wrap" id="subs-container">
+      <div class="empty"><div>Loading...</div></div>
+    </div>
+  </section>
+
+  <!-- ===== Notifications Tab ===== -->
+  <section id="notifications" class="tab-content">
+
+    <div class="card" id="push-card">
+      <h3>Web Push Notifications</h3>
+      <div id="push-status-msg" class="alert alert-info" style="display:none"></div>
+      <p style="font-size:14px;color:var(--text-dim);margin-bottom:14px;">
+        Receive browser push notifications when your subscription limits reset.
+        Requires VAPID keys to be configured on the server.
+      </p>
+      <button class="btn btn-secondary" id="push-btn">Enable Push Notifications</button>
+    </div>
+
+    <div class="card">
+      <h3>Telegram Notifications</h3>
+      <p style="font-size:14px;color:var(--text-dim);margin-bottom:14px;">
+        Add your Telegram chat ID to receive messages when limits reset.<br>
+        Get your chat ID from <a href="https://t.me/userinfobot" target="_blank" style="color:var(--accent)">@userinfobot</a> on Telegram.
+      </p>
+      <div class="notif-row">
+        <input type="text" id="tg-chat-input" placeholder="e.g. 123456789" />
+        <button class="btn btn-primary" id="tg-add-btn">Add</button>
+      </div>
+      <div id="tg-chats-list"></div>
+
+      <div style="margin-top:16px;padding-top:16px;border-top:1px solid var(--border)">
+        <button class="btn btn-secondary btn-sm" id="test-notif-btn">Send Test Notification</button>
+        <span id="test-result" style="font-size:13px;margin-left:10px;color:var(--text-dim)"></span>
+      </div>
+    </div>
+
+  </section>
+
+  <!-- ===== Log Tab ===== -->
+  <section id="log" class="tab-content">
+    <div class="section-header">
+      <h2>Activity Log</h2>
+      <button class="btn btn-secondary btn-sm" id="refresh-log-btn">Refresh</button>
+    </div>
+    <div class="card" id="log-container">
+      <div class="empty"><div>Loading...</div></div>
+    </div>
+  </section>
+
+</main>
+
+<!-- ===== Subscription Modal ===== -->
+<div class="modal-backdrop" id="modal-backdrop">
+  <div class="modal">
+    <h2 id="modal-title">Add Subscription</h2>
+    <form id="sub-form">
+      <input type="hidden" id="sub-id" />
+      <div class="form-group">
+        <label for="sub-name">Name</label>
+        <input type="text" id="sub-name" placeholder="e.g. Claude Pro" required />
+      </div>
+      <div class="form-group">
+        <label for="sub-service">Service</label>
+        <select id="sub-service" required>
+          <option value="claude">Claude (Anthropic)</option>
+          <option value="openai">OpenAI</option>
+          <option value="zai">Z.ai</option>
+          <option value="other">Other</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label for="sub-day">Billing Reset Day (1–31)</label>
+        <input type="number" id="sub-day" min="1" max="31" placeholder="e.g. 15" required />
+      </div>
+      <div class="form-group">
+        <label for="sub-notes">Notes (optional)</label>
+        <textarea id="sub-notes" rows="2" placeholder="Plan details, limits, etc."></textarea>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" id="modal-cancel">Cancel</button>
+        <button type="submit" class="btn btn-primary" id="modal-save">Save</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script src="/js/app.js"></script>
+</body>
+</html>
