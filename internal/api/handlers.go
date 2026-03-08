@@ -12,6 +12,7 @@ import (
 	"github.com/korjavin/substracker/internal/provider"
 	"github.com/korjavin/substracker/internal/provider/claudeprovider"
 	"github.com/korjavin/substracker/internal/provider/googleoneprovider"
+	"github.com/korjavin/substracker/internal/provider/zaiprovider"
 	"github.com/korjavin/substracker/internal/repository"
 	"github.com/korjavin/substracker/internal/service"
 )
@@ -22,6 +23,7 @@ type Handler struct {
 	vapidPublicKey    string
 	claudeProvider    provider.Provider
 	googleOneProvider provider.Provider
+	zaiProvider       provider.Provider
 }
 
 func NewHandler(repo *repository.Queries, notifSvc *service.NotificationService, vapidPublicKey string) *Handler {
@@ -31,7 +33,13 @@ func NewHandler(repo *repository.Queries, notifSvc *service.NotificationService,
 		vapidPublicKey:    vapidPublicKey,
 		claudeProvider:    claudeprovider.NewClaudeProvider(),
 		googleOneProvider: googleoneprovider.NewGoogleOneProvider(),
+		zaiProvider:       zaiprovider.NewZAIProvider(),
 	}
+}
+
+// GetZAIProvider returns the Z.ai provider instance.
+func (h *Handler) GetZAIProvider() provider.Provider {
+	return h.zaiProvider
 }
 
 // GetClaudeProvider returns the Claude provider instance.
@@ -52,6 +60,11 @@ func (h *Handler) Register(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/providers/googleone/login-info", h.googleOneLoginInfo)
 	mux.HandleFunc("POST /api/providers/googleone/login", h.googleOneLogin)
 	mux.HandleFunc("GET /api/providers/googleone/usage", h.googleOneUsage)
+
+	// Z.ai Provider
+	mux.HandleFunc("GET /api/providers/zai/login-info", h.zaiLoginInfo)
+	mux.HandleFunc("POST /api/providers/zai/login", h.zaiLogin)
+	mux.HandleFunc("GET /api/providers/zai/usage", h.zaiUsage)
 
 	// Subscriptions
 	mux.HandleFunc("GET /api/subscriptions", h.listSubscriptions)
@@ -185,6 +198,65 @@ func (h *Handler) googleOneUsage(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "failed to fetch usage")
 		return
 	}
+
+	writeJSON(w, http.StatusOK, info)
+}
+
+// --- Z.ai Provider ---
+
+func (h *Handler) zaiLoginInfo(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, http.StatusOK, map[string]string{
+		"url":          "https://z.ai/",
+		"instructions": "Log in to z.ai, open Developer Tools -> Application -> Cookies, and copy the value of the 'session_cookie' cookie.",
+	})
+}
+
+func (h *Handler) zaiLogin(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		SessionCookie string `json:"session_cookie"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+
+	err := h.zaiProvider.Login(r.Context(), map[string]string{"session_cookie": req.SessionCookie})
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	// Persist the credential
+	err = h.repo.UpsertProviderCredential(r.Context(), repository.UpsertProviderCredentialParams{
+		ProviderName:    h.zaiProvider.Name(),
+		CredentialKey:   "session_cookie",
+		CredentialValue: req.SessionCookie,
+	})
+	if err != nil {
+		slog.Error("failed to persist z.ai credential", "error", err)
+	}
+
+	writeJSON(w, http.StatusOK, map[string]string{"status": "logged_in"})
+}
+
+func (h *Handler) zaiUsage(w http.ResponseWriter, r *http.Request) {
+	info, err := h.zaiProvider.FetchUsageInfo(r.Context())
+	if err != nil {
+		if errors.Is(err, provider.ErrUnauthorized) {
+			writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "relogin_required"})
+			return
+		}
+		slog.Error("fetch z.ai usage", "error", err)
+		writeError(w, http.StatusInternalServerError, "failed to fetch usage")
+		return
+	}
+
+	_ = h.repo.UpsertProviderUsage(r.Context(), repository.UpsertProviderUsageParams{
+		ProviderName:        h.zaiProvider.Name(),
+		CurrentUsageSeconds: info.CurrentUsageSeconds,
+		TotalLimitSeconds:   info.TotalLimitSeconds,
+		IsBlocked:           info.IsBlocked,
+	})
 
 	writeJSON(w, http.StatusOK, info)
 }

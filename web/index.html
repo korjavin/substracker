@@ -32,7 +32,6 @@
         <button class="btn btn-secondary btn-sm" id="refresh-usage-btn">Refresh</button>
       </div>
       <div id="usage-content">
-        <div class="empty"><div style="font-size: 14px;">Loading...</div></div>
       </div>
     </div>
 
@@ -117,6 +116,30 @@
     <button class="btn btn-danger" id="detail-delete-btn">Delete</button>
   </div>
 </aside>
+
+<!-- ===== Z.ai Settings Modal ===== -->
+<div class="modal-backdrop" id="zai-settings-backdrop" style="display:none;">
+  <div class="modal">
+    <h2>Z.ai Settings</h2>
+    <p style="font-size:14px;color:var(--text-dim);margin-bottom:15px;">
+      To track Z.ai usage, you need to provide your session cookie.<br><br>
+      1. Go to <a href="https://z.ai/" target="_blank" style="color:var(--accent)">z.ai</a> and log in.<br>
+      2. Open Developer Tools (F12) &gt; Application &gt; Cookies.<br>
+      3. Copy the value of the <strong>session_cookie</strong> cookie.<br>
+      4. Paste it below.
+    </p>
+    <form id="zai-settings-form">
+      <div class="form-group">
+        <label for="zai-session-cookie">Session Cookie</label>
+        <input type="password" id="zai-session-cookie" placeholder="Paste session_cookie value here..." required />
+      </div>
+      <div class="modal-footer" style="margin-top:20px;display:flex;justify-content:flex-end;gap:10px;">
+        <button type="button" class="btn btn-secondary" id="zai-settings-cancel">Cancel</button>
+        <button type="submit" class="btn btn-primary" id="zai-settings-save">Save</button>
+      </div>
+    </form>
+  </div>
+</div>
 
 <!-- ===== Subscription Modal ===== -->
 <div class="modal-backdrop" id="modal-backdrop">

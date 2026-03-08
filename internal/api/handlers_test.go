@@ -54,6 +54,14 @@ func setupTestDB(t *testing.T) *repository.Queries {
 		t.Fatalf("failed to open memory db: %v", err)
 	}
 	_, err = db.Exec(`
+		CREATE TABLE provider_credentials (
+			provider_name TEXT NOT NULL,
+			credential_key TEXT NOT NULL,
+			credential_value TEXT NOT NULL,
+			updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+			UNIQUE(provider_name, credential_key)
+		);
+
 		CREATE TABLE provider_usage (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
 			provider_name TEXT UNIQUE NOT NULL,
@@ -276,6 +284,141 @@ func TestGoogleOneUsage(t *testing.T) {
 	reqUnauth := httptest.NewRequest(http.MethodGet, "/api/providers/googleone/usage", nil)
 	rrUnauth := httptest.NewRecorder()
 	hUnauthorized.googleOneUsage(rrUnauth, reqUnauth)
+
+	if rrUnauth.Code != http.StatusUnauthorized {
+		t.Errorf("expected status 401, got %d", rrUnauth.Code)
+	}
+
+	var resUnauth map[string]string
+	if err := json.NewDecoder(rrUnauth.Body).Decode(&resUnauth); err != nil {
+		t.Fatalf("failed to decode response: %v", err)
+	}
+	if resUnauth["error"] != "relogin_required" {
+		t.Errorf("expected error 'relogin_required', got '%s'", resUnauth["error"])
+	}
+}
+
+// mockZAIProvider implements provider.Provider for testing API endpoints
+type mockZAIProvider struct {
+	sessionCookie string
+	shouldFail    bool
+}
+
+func (m *mockZAIProvider) Name() string {
+	return "MockZAI"
+}
+
+func (m *mockZAIProvider) Login(ctx context.Context, credentials map[string]string) error {
+	if m.shouldFail {
+		return provider.ErrUnauthorized
+	}
+	m.sessionCookie = credentials["session_cookie"]
+	return nil
+}
+
+func (m *mockZAIProvider) FetchUsageInfo(ctx context.Context) (*provider.UsageInfo, error) {
+	if m.shouldFail {
+		return nil, provider.ErrUnauthorized
+	}
+	if m.sessionCookie == "" {
+		return nil, provider.ErrUnauthorized
+	}
+	return &provider.UsageInfo{
+		ResetDate:           time.Now(),
+		CurrentUsageSeconds: 100,
+		TotalLimitSeconds:   500,
+		IsBlocked:           false,
+	}, nil
+}
+
+func TestZAILoginInfo(t *testing.T) {
+	h := &Handler{}
+
+	req := httptest.NewRequest(http.MethodGet, "/api/providers/zai/login-info", nil)
+	rr := httptest.NewRecorder()
+
+	h.zaiLoginInfo(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Errorf("expected status 200, got %d", rr.Code)
+	}
+
+	var res map[string]string
+	if err := json.NewDecoder(rr.Body).Decode(&res); err != nil {
+		t.Fatalf("failed to decode response: %v", err)
+	}
+
+	if res["url"] != "https://z.ai/" {
+		t.Errorf("expected url 'https://z.ai/', got '%s'", res["url"])
+	}
+}
+
+func TestZAILogin(t *testing.T) {
+	repo := setupTestDB(t)
+	m := &mockZAIProvider{}
+	h := &Handler{repo: repo, zaiProvider: m}
+
+	body := []byte(`{"session_cookie": "test_cookie"}`)
+	req := httptest.NewRequest(http.MethodPost, "/api/providers/zai/login", bytes.NewBuffer(body))
+	rr := httptest.NewRecorder()
+
+	h.zaiLogin(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Errorf("expected status 200, got %d", rr.Code)
+	}
+
+	if m.sessionCookie != "test_cookie" {
+		t.Errorf("expected mock provider to store 'test_cookie', got '%s'", m.sessionCookie)
+	}
+
+	cred, err := repo.GetProviderCredential(context.Background(), "MockZAI", "session_cookie")
+	if err != nil {
+		t.Fatalf("failed to retrieve credential from db: %v", err)
+	}
+	if cred.CredentialValue != "test_cookie" {
+		t.Errorf("expected stored credential 'test_cookie', got '%s'", cred.CredentialValue)
+	}
+
+	// Test invalid body
+	reqInvalid := httptest.NewRequest(http.MethodPost, "/api/providers/zai/login", bytes.NewBuffer([]byte(`{invalid_json}`)))
+	rrInvalid := httptest.NewRecorder()
+	h.zaiLogin(rrInvalid, reqInvalid)
+
+	if rrInvalid.Code != http.StatusBadRequest {
+		t.Errorf("expected status 400 for invalid json, got %d", rrInvalid.Code)
+	}
+}
+
+func TestZAIUsage(t *testing.T) {
+	repo := setupTestDB(t)
+	m := &mockZAIProvider{sessionCookie: "valid_cookie"}
+	h := &Handler{repo: repo, zaiProvider: m}
+
+	// Test success
+	req := httptest.NewRequest(http.MethodGet, "/api/providers/zai/usage", nil)
+	rr := httptest.NewRecorder()
+	h.zaiUsage(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Errorf("expected status 200, got %d", rr.Code)
+	}
+
+	usage, err := repo.GetProviderUsage(context.Background(), "MockZAI")
+	if err != nil {
+		t.Fatalf("failed to retrieve usage from db: %v", err)
+	}
+	if usage.CurrentUsageSeconds != 100 {
+		t.Errorf("expected stored usage 100, got '%d'", usage.CurrentUsageSeconds)
+	}
+
+	// Test unauthorized
+	mUnauthorized := &mockZAIProvider{shouldFail: true}
+	hUnauthorized := &Handler{zaiProvider: mUnauthorized}
+
+	reqUnauth := httptest.NewRequest(http.MethodGet, "/api/providers/zai/usage", nil)
+	rrUnauth := httptest.NewRecorder()
+	hUnauthorized.zaiUsage(rrUnauth, reqUnauth)
 
 	if rrUnauth.Code != http.StatusUnauthorized {
 		t.Errorf("expected status 401, got %d", rrUnauth.Code)

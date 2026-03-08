@@ -62,6 +62,15 @@ func main() {
 	handler := api.NewHandler(repo, notifSvc, notifCfg.VAPIDPublicKey)
 	handler.Register(mux)
 
+	// Load stored Z.ai credential on startup
+	if cred, err := repo.GetProviderCredential(ctx, "Z.ai", "session_cookie"); err == nil {
+		if err := handler.GetZAIProvider().Login(ctx, map[string]string{"session_cookie": cred.CredentialValue}); err != nil {
+			slog.Error("failed to restore Z.ai session", "error", err)
+		} else {
+			slog.Info("restored Z.ai session from db")
+		}
+	}
+
 	pollIntervalStr := os.Getenv("QUOTA_POLL_INTERVAL")
 	pollInterval := 15 * time.Minute
 	if pollIntervalStr != "" {
@@ -74,7 +83,7 @@ func main() {
 
 	// For usage polling we need access to the providers. We can expose the claude provider from handler or instantiate it separately.
 	// Since api.Handler instantiates it, let's expose it or pass a list of providers to the scheduler.
-	providers := []provider.Provider{handler.GetClaudeProvider()}
+	providers := []provider.Provider{handler.GetClaudeProvider(), handler.GetZAIProvider()}
 	scheduler := service.NewScheduler(repo, notifSvc, logger, providers, pollInterval)
 	go scheduler.Run(ctx)
 

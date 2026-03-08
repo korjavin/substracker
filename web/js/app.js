@@ -57,8 +57,24 @@ function serviceBadge(service) {
 }
 
 // ---- Usage Status ----
+function getMainUsageContainer() {
+  let mainContainer = document.getElementById('main-usage-card');
+  if (!mainContainer) {
+    mainContainer = document.createElement('div');
+    mainContainer.id = 'main-usage-card';
+    const content = document.getElementById('usage-content');
+    // Ensure it goes before zai-usage-card if it exists
+    if (content.firstChild) {
+        content.insertBefore(mainContainer, content.firstChild);
+    } else {
+        content.appendChild(mainContainer);
+    }
+  }
+  return mainContainer;
+}
+
 async function loadUsage() {
-  const el = document.getElementById('usage-content');
+  const el = getMainUsageContainer();
   try {
     const data = await api('GET', '/api/providers/usage/cached');
     renderUsage(data);
@@ -73,7 +89,7 @@ async function loadUsage() {
 
 async function refreshUsage() {
   const btn = document.getElementById('refresh-usage-btn');
-  const el = document.getElementById('usage-content');
+  const el = getMainUsageContainer();
   btn.disabled = true;
   el.innerHTML = `<p style="font-size:13px;color:var(--text-dim)">Fetching from provider...</p>`;
   try {
@@ -96,10 +112,95 @@ async function refreshUsage() {
   }
 }
 
-document.getElementById('refresh-usage-btn').addEventListener('click', refreshUsage);
+async function loadZAIUsage() {
+  const el = document.getElementById('usage-content');
+  // Temporary: we append to the existing content or create a separate card.
+  // We'll just fetch Z.ai explicitly to show it.
+  try {
+    const data = await api('GET', '/api/providers/zai/usage');
+    renderZAIUsage({
+      provider_name: 'Z.ai',
+      current_usage_seconds: data.CurrentUsageSeconds || 0,
+      total_limit_seconds: data.TotalLimitSeconds || 0,
+      is_blocked: data.IsBlocked || false,
+      fetched_at: new Date().toISOString()
+    });
+  } catch (e) {
+    if (e.message.includes('relogin_required')) {
+      renderZAIUsageError('Login required. <a href="#" onclick="openZAISettings(); return false;">Go to settings</a>.');
+    } else {
+      renderZAIUsageError(`Error: ${e.message}`);
+    }
+  }
+}
+
+function renderZAIUsageError(msg) {
+  let zaiCard = document.getElementById('zai-usage-card');
+  if (!zaiCard) {
+    zaiCard = document.createElement('div');
+    zaiCard.id = 'zai-usage-card';
+    zaiCard.style.marginTop = '15px';
+    zaiCard.style.paddingTop = '15px';
+    zaiCard.style.borderTop = '1px solid var(--border)';
+    document.getElementById('usage-content').appendChild(zaiCard);
+  }
+  zaiCard.innerHTML = `
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+      <div style="font-size:14px; font-weight: 500;">Z.ai Status</div>
+      <button class="btn btn-secondary btn-sm" onclick="openZAISettings()" title="Settings">⚙️</button>
+    </div>
+    <p style="font-size:13px;color:var(--yellow)">${msg}</p>
+  `;
+}
+
+function renderZAIUsage(u) {
+  let zaiCard = document.getElementById('zai-usage-card');
+  if (!zaiCard) {
+    zaiCard = document.createElement('div');
+    zaiCard.id = 'zai-usage-card';
+    zaiCard.style.marginTop = '15px';
+    zaiCard.style.paddingTop = '15px';
+    zaiCard.style.borderTop = '1px solid var(--border)';
+    document.getElementById('usage-content').appendChild(zaiCard);
+  }
+
+  const percent = u.total_limit_seconds > 0 ? Math.min(100, (u.current_usage_seconds / u.total_limit_seconds) * 100) : 0;
+  const isDanger = percent > 90 || u.is_blocked;
+  const barClass = isDanger ? 'usage-bar danger' : 'usage-bar';
+  const blockedBadge = u.is_blocked ? `<span class="badge-blocked">BLOCKED</span>` : '';
+  const d = new Date(u.fetched_at);
+
+  let details = '';
+  if (u.total_limit_seconds > 0) {
+    details = `<span>${u.current_usage_seconds} / ${u.total_limit_seconds} used</span>`;
+  } else {
+    details = `<span>Status: ${u.is_blocked ? 'BLOCKED' : 'ACTIVE'}</span>`;
+  }
+
+  zaiCard.innerHTML = `
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+      <div style="font-size:14px; font-weight: 500;">
+        ${esc(u.provider_name)} ${blockedBadge}
+      </div>
+      <button class="btn btn-secondary btn-sm" onclick="openZAISettings()" title="Settings">⚙️</button>
+    </div>
+    <div class="usage-bar-container">
+      <div class="${barClass}" style="width: ${percent}%"></div>
+    </div>
+    <div class="usage-details">
+      ${details}
+      <span>Last checked: ${d.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
+    </div>
+  `;
+}
+
+document.getElementById('refresh-usage-btn').addEventListener('click', () => {
+  refreshUsage();
+  loadZAIUsage();
+});
 
 function renderUsage(u) {
-  const el = document.getElementById('usage-content');
+  const el = getMainUsageContainer();
   const percent = u.total_limit_seconds > 0 ? Math.min(100, (u.current_usage_seconds / u.total_limit_seconds) * 100) : 0;
 
   // Claude's API might not provide exact numbers, but gives IsBlocked flag.
@@ -145,7 +246,45 @@ function renderUsage(u) {
 }
 
 // Poll usage every 5 mins
-setInterval(loadUsage, 5 * 60 * 1000);
+setInterval(() => {
+  loadUsage();
+  loadZAIUsage();
+}, 5 * 60 * 1000);
+
+// ---- Z.ai Settings Modal ----
+const zaiBackdrop = document.getElementById('zai-settings-backdrop');
+const zaiForm = document.getElementById('zai-settings-form');
+
+document.getElementById('zai-settings-cancel').addEventListener('click', closeZAISettings);
+zaiBackdrop.addEventListener('click', e => { if (e.target === zaiBackdrop) closeZAISettings(); });
+
+function openZAISettings() {
+  zaiBackdrop.style.display = 'block';
+  setTimeout(() => zaiBackdrop.classList.add('open'), 10);
+  document.getElementById('zai-session-cookie').focus();
+}
+
+function closeZAISettings() {
+  zaiBackdrop.classList.remove('open');
+  setTimeout(() => { zaiBackdrop.style.display = 'none'; }, 200);
+  zaiForm.reset();
+}
+
+zaiForm.addEventListener('submit', async e => {
+  e.preventDefault();
+  const cookie = document.getElementById('zai-session-cookie').value.trim();
+  const btn = document.getElementById('zai-settings-save');
+  btn.disabled = true;
+  try {
+    await api('POST', '/api/providers/zai/login', { session_cookie: cookie });
+    closeZAISettings();
+    loadZAIUsage();
+  } catch (err) {
+    alert('Error saving Z.ai settings: ' + err.message);
+  } finally {
+    btn.disabled = false;
+  }
+});
 
 // ---- Subscriptions ----
 let subs = [];
@@ -522,3 +661,4 @@ document.getElementById('refresh-log-btn').addEventListener('click', loadLog);
 // ---- Init ----
 loadSubs();
 loadUsage();
+loadZAIUsage();

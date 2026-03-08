@@ -17,6 +17,14 @@ func TestProviderUsage(t *testing.T) {
 
 	// Run bare minimum schema for testing
 	_, err = db.Exec(`
+		CREATE TABLE provider_credentials (
+			provider_name TEXT NOT NULL,
+			credential_key TEXT NOT NULL,
+			credential_value TEXT NOT NULL,
+			updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+			UNIQUE(provider_name, credential_key)
+		);
+
 		CREATE TABLE provider_usage (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
 			provider_name TEXT UNIQUE NOT NULL,
@@ -75,5 +83,71 @@ func TestProviderUsage(t *testing.T) {
 	}
 	if u.CurrentUsageSeconds != 7200 || !u.IsBlocked {
 		t.Errorf("unexpected values after update: %+v", u)
+	}
+}
+
+func TestProviderCredentials(t *testing.T) {
+	db, err := sql.Open("sqlite", ":memory:")
+	if err != nil {
+		t.Fatalf("failed to open memory db: %v", err)
+	}
+	defer db.Close()
+
+	_, err = db.Exec(`
+		CREATE TABLE provider_credentials (
+			provider_name TEXT NOT NULL,
+			credential_key TEXT NOT NULL,
+			credential_value TEXT NOT NULL,
+			updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+			UNIQUE(provider_name, credential_key)
+		);
+	`)
+	if err != nil {
+		t.Fatalf("failed to create schema: %v", err)
+	}
+
+	repo := New(db)
+	ctx := context.Background()
+
+	// 1. Get non-existent
+	_, err = repo.GetProviderCredential(ctx, "Claude", "session_key")
+	if err != sql.ErrNoRows {
+		t.Errorf("expected ErrNoRows, got %v", err)
+	}
+
+	// 2. Insert
+	err = repo.UpsertProviderCredential(ctx, UpsertProviderCredentialParams{
+		ProviderName:    "Claude",
+		CredentialKey:   "session_key",
+		CredentialValue: "abc12345",
+	})
+	if err != nil {
+		t.Fatalf("insert failed: %v", err)
+	}
+
+	c, err := repo.GetProviderCredential(ctx, "Claude", "session_key")
+	if err != nil {
+		t.Fatalf("get failed: %v", err)
+	}
+	if c.ProviderName != "Claude" || c.CredentialKey != "session_key" || c.CredentialValue != "abc12345" {
+		t.Errorf("unexpected values after insert: %+v", c)
+	}
+
+	// 3. Update
+	err = repo.UpsertProviderCredential(ctx, UpsertProviderCredentialParams{
+		ProviderName:    "Claude",
+		CredentialKey:   "session_key",
+		CredentialValue: "new_value_67890",
+	})
+	if err != nil {
+		t.Fatalf("update failed: %v", err)
+	}
+
+	c, err = repo.GetProviderCredential(ctx, "Claude", "session_key")
+	if err != nil {
+		t.Fatalf("get after update failed: %v", err)
+	}
+	if c.CredentialValue != "new_value_67890" {
+		t.Errorf("unexpected values after update: %+v", c)
 	}
 }
