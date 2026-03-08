@@ -69,6 +69,15 @@ func main() {
 	handler := api.NewHandler(repo, notifSvc, notifCfg.VAPIDPublicKey, sessionSecret, notifCfg.TelegramBotToken, telegramBotUsername)
 	handler.Register(mux)
 
+	// Load stored Z.ai credential on startup
+	if sessionCookie, err := repo.GetProviderCredential(ctx, handler.GetZAIProvider().Name(), "session_cookie"); err == nil && sessionCookie != "" {
+		if err := handler.GetZAIProvider().Login(ctx, map[string]string{"session_cookie": sessionCookie}); err != nil {
+			slog.Error("failed to restore Z.ai session", "error", err)
+		} else {
+			slog.Info("restored Z.ai session from db")
+		}
+	}
+
 	pollIntervalStr := os.Getenv("QUOTA_POLL_INTERVAL")
 	pollInterval := 15 * time.Minute
 	if pollIntervalStr != "" {
@@ -101,6 +110,7 @@ func main() {
 	providers := []provider.Provider{
 		handler.GetClaudeProvider(),
 		handler.GetGoogleOneProvider(),
+		handler.GetZAIProvider(),
 	}
 	scheduler := service.NewScheduler(repo, notifSvc, logger, providers, pollInterval)
 	go scheduler.Run(ctx)

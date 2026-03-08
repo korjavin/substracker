@@ -11,6 +11,14 @@ A small helper to track usage for different Claude/OpenAI/Z.ai subscriptions and
 - Clean web UI for managing subscriptions and notification settings
 - SQLite database (pure Go, no CGO)
 
+## Tracked Providers
+Currently, SubsTracker supports automated usage tracking for:
+- **Claude (Anthropic)**: requires a `session_key` cookie from claude.ai
+- **Google One**: requires a `SID` cookie from one.google.com
+- **Z.ai**: requires a `session_cookie` cookie from z.ai
+
+To enable tracking, open the settings menu (gear icon) next to the provider in the web interface and enter the required cookie.
+
 ## Quick Start
 
 ```bash
