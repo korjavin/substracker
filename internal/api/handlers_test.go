@@ -125,6 +125,24 @@ func TestClaudeLogin(t *testing.T) {
 	if rrInvalid.Code != http.StatusBadRequest {
 		t.Errorf("expected status 400 for invalid json, got %d", rrInvalid.Code)
 	}
+
+	// Test persistence failure
+	dbFail, err := sql.Open("sqlite", ":memory:")
+	if err != nil {
+		t.Fatalf("failed to open memory db: %v", err)
+	}
+	defer dbFail.Close()
+	// Deliberately DO NOT run migrations so that the table is missing and persistence fails
+	repoFail := repository.New(dbFail)
+	hFail := &Handler{repo: repoFail, zaiProvider: m}
+
+	reqFail := httptest.NewRequest(http.MethodPost, "/api/providers/zai/login", bytes.NewBuffer(body))
+	rrFail := httptest.NewRecorder()
+	hFail.zaiLogin(rrFail, reqFail)
+
+	if rrFail.Code != http.StatusInternalServerError {
+		t.Errorf("expected status 500 when persistence fails, got %d", rrFail.Code)
+	}
 }
 
 func TestClaudeUsage(t *testing.T) {
@@ -261,6 +279,23 @@ func TestGoogleOneLogin(t *testing.T) {
 
 	if rrInvalid.Code != http.StatusBadRequest {
 		t.Errorf("expected status 400 for invalid json, got %d", rrInvalid.Code)
+	}
+
+	// Test persistence failure
+	dbFail, err := sql.Open("sqlite", ":memory:")
+	if err != nil {
+		t.Fatalf("failed to open memory db: %v", err)
+	}
+	defer dbFail.Close()
+	repoFail := repository.New(dbFail)
+	hFail := &Handler{repo: repoFail, zaiProvider: m}
+
+	reqFail := httptest.NewRequest(http.MethodPost, "/api/providers/zai/login", bytes.NewBuffer(body))
+	rrFail := httptest.NewRecorder()
+	hFail.zaiLogin(rrFail, reqFail)
+
+	if rrFail.Code != http.StatusInternalServerError {
+		t.Errorf("expected status 500 when persistence fails, got %d", rrFail.Code)
 	}
 }
 

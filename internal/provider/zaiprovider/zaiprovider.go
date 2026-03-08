@@ -45,11 +45,14 @@ func (p *ZAIProvider) Login(ctx context.Context, credentials map[string]string) 
 }
 
 type zaiUsageResponse struct {
-	Usage struct {
+	Success *bool  `json:"success,omitempty"`
+	Msg     string `json:"msg,omitempty"`
+	Code    int    `json:"code,omitempty"`
+	Usage   *struct {
 		Current int64  `json:"current"`
 		Limit   int64  `json:"limit"`
 		ResetAt string `json:"reset_at"`
-	} `json:"usage"`
+	} `json:"usage,omitempty"`
 }
 
 func (p *ZAIProvider) FetchUsageInfo(ctx context.Context) (*provider.UsageInfo, error) {
@@ -88,6 +91,14 @@ func (p *ZAIProvider) FetchUsageInfo(ctx context.Context) (*provider.UsageInfo, 
 	var usageResp zaiUsageResponse
 	if err := json.NewDecoder(resp.Body).Decode(&usageResp); err != nil {
 		return nil, fmt.Errorf("decode response: %w", err)
+	}
+
+	if usageResp.Success != nil && !*usageResp.Success {
+		return nil, fmt.Errorf("api error: %s (code: %d)", usageResp.Msg, usageResp.Code)
+	}
+
+	if usageResp.Usage == nil {
+		return nil, fmt.Errorf("missing usage data in response")
 	}
 
 	var resetDate time.Time

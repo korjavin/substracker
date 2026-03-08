@@ -234,6 +234,8 @@ func (h *Handler) zaiLogin(w http.ResponseWriter, r *http.Request) {
 	})
 	if err != nil {
 		slog.Error("failed to persist z.ai credential", "error", err)
+		writeError(w, http.StatusInternalServerError, "failed to persist credential")
+		return
 	}
 
 	writeJSON(w, http.StatusOK, map[string]string{"status": "logged_in"})

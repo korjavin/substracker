@@ -111,6 +111,50 @@ func TestZAIProvider_FetchUsageInfo_Unauthorized(t *testing.T) {
 	}
 }
 
+func TestZAIProvider_FetchUsageInfo_APIError(t *testing.T) {
+	mockResponse := `{"code":500,"msg":"404 NOT_FOUND","success":false}`
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(mockResponse))
+	}))
+	defer ts.Close()
+
+	p := NewZAIProvider()
+	p.baseURL = ts.URL
+	ctx := context.Background()
+	_ = p.Login(ctx, map[string]string{"session_cookie": "abc12345"})
+
+	_, err := p.FetchUsageInfo(ctx)
+	if err == nil {
+		t.Errorf("expected error for 200 API error response, got nil")
+	} else if err.Error() != "api error: 404 NOT_FOUND (code: 500)" {
+		t.Errorf("expected specific api error message, got %v", err)
+	}
+}
+
+func TestZAIProvider_FetchUsageInfo_MissingUsage(t *testing.T) {
+	mockResponse := `{"success":true,"other_data":"present"}`
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(mockResponse))
+	}))
+	defer ts.Close()
+
+	p := NewZAIProvider()
+	p.baseURL = ts.URL
+	ctx := context.Background()
+	_ = p.Login(ctx, map[string]string{"session_cookie": "abc12345"})
+
+	_, err := p.FetchUsageInfo(ctx)
+	if err == nil {
+		t.Errorf("expected error for missing usage data, got nil")
+	} else if err.Error() != "missing usage data in response" {
+		t.Errorf("expected missing usage error, got %v", err)
+	}
+}
+
 func TestZAIProvider_FetchUsageInfo_Malformed(t *testing.T) {
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
