@@ -313,11 +313,76 @@ document.getElementById('add-sub-btn').addEventListener('click', () => openModal
 document.getElementById('modal-cancel').addEventListener('click', closeModal);
 backdrop.addEventListener('click', e => { if (e.target === backdrop) closeModal(); });
 
+function updateAuthHelp(service) {
+  const helpDiv = document.getElementById('sub-auth-help');
+  if (!helpDiv) return;
+
+  let html = '';
+  switch (service) {
+    case 'openai':
+      html = `
+        <strong>OpenAI Auth Instructions:</strong><br>
+        1. Go to <a href="https://chatgpt.com" target="_blank" style="color:var(--primary-color)">chatgpt.com</a> and sign in.<br>
+        2. Open DevTools (F12 or Cmd+Option+I on Mac).<br>
+        3. Click "Application" tab > "Cookies" > select https://chatgpt.com.<br>
+        4. Find the cookie named <code>__Secure-next-auth.session-token</code>.<br>
+        5. Copy the full value (a long JWT string).<br>
+        6. Paste the value into the Auth Token field above.
+      `;
+      break;
+    case 'claude':
+      html = `
+        <strong>Claude Auth Instructions:</strong><br>
+        1. Go to <a href="https://claude.ai" target="_blank" style="color:var(--primary-color)">claude.ai</a> and sign in.<br>
+        2. Open DevTools (F12 or Cmd+Option+I on Mac).<br>
+        3. Click "Application" tab > "Cookies" > select https://claude.ai.<br>
+        4. Find the cookie named <code>sessionKey</code>.<br>
+        5. Copy the full value (starts with sk-ant-...).<br>
+        6. Paste the value into the Auth Token field above.
+      `;
+      break;
+    case 'googleone':
+      html = `
+        <strong>Google One Auth Instructions:</strong><br>
+        1. Go to <a href="https://one.google.com" target="_blank" style="color:var(--primary-color)">one.google.com</a> and sign in.<br>
+        2. Open DevTools (F12 or Cmd+Option+I on Mac).<br>
+        3. Click "Application" tab > "Cookies" > select https://one.google.com.<br>
+        4. Find the cookie named <code>SID</code>.<br>
+        5. Copy the full value.<br>
+        6. Paste the value into the Auth Token field above.
+      `;
+      break;
+    case 'zai':
+      html = `
+        <strong>Z.ai Auth Instructions:</strong><br>
+        1. Go to <a href="https://z.ai" target="_blank" style="color:var(--primary-color)">z.ai</a> and sign in.<br>
+        2. Open DevTools (F12 or Cmd+Option+I on Mac).<br>
+        3. Click "Application" tab > "Cookies" > select https://z.ai.<br>
+        4. Find the cookie named <code>session_cookie</code>.<br>
+        5. Copy the full value.<br>
+        6. Paste the value into the Auth Token field above.
+      `;
+      break;
+    default:
+      helpDiv.style.display = 'none';
+      return;
+  }
+
+  helpDiv.innerHTML = html;
+  helpDiv.style.display = 'block';
+}
+
+document.getElementById('sub-service').addEventListener('change', (e) => {
+  updateAuthHelp(e.target.value);
+});
+
 function openModal(sub) {
   document.getElementById('modal-title').textContent = sub ? 'Edit Subscription' : 'Add Subscription';
   document.getElementById('sub-id').value = sub ? sub.id : '';
   document.getElementById('sub-name').value = sub ? sub.name : '';
-  document.getElementById('sub-service').value = sub ? sub.service : 'claude';
+  const service = sub ? sub.service : 'claude';
+  document.getElementById('sub-service').value = service;
+  updateAuthHelp(service);
   document.getElementById('sub-day').value = sub ? sub.billing_day : '';
   document.getElementById('sub-auth').value = sub ? (sub.auth_token || '') : '';
   document.getElementById('sub-notes').value = sub ? sub.notes : '';

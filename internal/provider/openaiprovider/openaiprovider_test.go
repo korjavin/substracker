@@ -61,29 +61,48 @@ func TestOpenAIProvider_FetchUsageInfo(t *testing.T) {
 			wantError: true,
 		},
 		{
-			name:  "server returns ok with access_until",
+			name:  "server returns ok with primary_window limits",
 			token: "token123",
 			handler: func(w http.ResponseWriter, r *http.Request) {
 				cookieHeader := r.Header.Get("Cookie")
-				if cookieHeader != "__Secure-next-auth.session-token=token123" {
+				authHeader := r.Header.Get("Authorization")
+				if cookieHeader != "__Secure-next-auth.session-token=token123" || authHeader != "Bearer token123" {
 					w.WriteHeader(http.StatusUnauthorized)
 					return
 				}
 				w.WriteHeader(http.StatusOK)
-				w.Write([]byte(`{"object": "billing_subscription", "access_until": 1715356800}`))
+				w.Write([]byte(`{
+					"rate_limit": {
+						"primary_window": {
+							"used_percent": 0.5,
+							"limit_window_seconds": 3600,
+							"reset_at": 1715356800
+						}
+					}
+				}`))
 			},
 			wantError: false,
 			wantTime:  true,
 		},
 		{
-			name:  "server returns ok without access_until fallback",
+			name:  "server returns ok without rate_limit fallback",
 			token: "token123",
 			handler: func(w http.ResponseWriter, r *http.Request) {
 				w.WriteHeader(http.StatusOK)
-				w.Write([]byte(`{"object": "billing_subscription"}`))
+				w.Write([]byte(`{"plan_type": "free"}`))
 			},
 			wantError: false,
 			wantTime:  true,
+		},
+		{
+			name:  "server returns unauthorized in detail body",
+			token: "token123",
+			handler: func(w http.ResponseWriter, r *http.Request) {
+				w.WriteHeader(http.StatusOK) // sometimes APIs return 200 with an error object
+				w.Write([]byte(`{"detail": "Unauthorized"}`))
+			},
+			wantError: true,
+			wantUnauthorized: true,
 		},
 	}
 

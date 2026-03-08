@@ -15,6 +15,7 @@ A small helper to track usage for different Claude/OpenAI/Z.ai subscriptions and
 Currently, SubsTracker supports automated usage tracking for:
 - **Claude (Anthropic)**: requires a `session_key` cookie from claude.ai
 - **Google One**: requires a `SID` cookie from one.google.com
+- **OpenAI / Codex**: requires a `__Secure-next-auth.session-token` cookie from chatgpt.com
 - **Z.ai**: requires a `session_cookie` cookie from z.ai
 
 To enable tracking, open the settings menu (gear icon) next to the provider in the web interface and enter the required cookie.
