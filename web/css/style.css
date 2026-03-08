@@ -145,6 +145,7 @@ tr:hover td { background: rgba(255,98,0,0.04); }
   font-weight: 600;
 }
 .badge-claude   { background: rgba(255,98,0,0.15);  color: #ff7c2a; }
+.badge-googleone{ background: rgba(66,133,244,0.15); color: #7bb2ff; }
 .badge-openai   { background: rgba(76,175,125,0.15); color: var(--green); }
 .badge-zai      { background: rgba(108,99,255,0.15); color: #a39fff; }
 .badge-other    { background: rgba(139,143,168,0.15); color: var(--text-dim); }

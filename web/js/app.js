@@ -49,9 +49,10 @@ function formatDate(date) {
 }
 
 function serviceBadge(service) {
-  const map = { claude: 'claude', openai: 'openai', zai: 'zai' };
+  const map = { claude: 'claude', googleone: 'googleone', openai: 'openai', zai: 'zai' };
+  const labels = { claude: 'Claude', googleone: 'Google One', openai: 'OpenAI', zai: 'Z.ai', other: 'Other' };
   const cls = map[service] || 'other';
-  const label = service.charAt(0).toUpperCase() + service.slice(1);
+  const label = labels[service] || (service.charAt(0).toUpperCase() + service.slice(1));
   return `<span class="badge badge-${cls}">${label}</span>`;
 }
 
