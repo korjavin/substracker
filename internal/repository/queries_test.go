@@ -91,7 +91,7 @@ func TestProviderCredential(t *testing.T) {
 			credential_key TEXT NOT NULL,
 			credential_value TEXT NOT NULL,
 			updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-			PRIMARY KEY (provider_name, credential_key)
+			UNIQUE(provider_name, credential_key)
 		);
 	`)
 	if err != nil {

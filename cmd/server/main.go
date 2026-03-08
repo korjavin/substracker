@@ -62,6 +62,14 @@ func main() {
 	handler := api.NewHandler(repo, notifSvc, notifCfg.VAPIDPublicKey)
 	handler.Register(mux)
 
+	// Load Claude credentials on startup
+	if cred, err := repo.GetProviderCredential(ctx, handler.GetClaudeProvider().Name(), "session_key"); err == nil && cred.CredentialValue != "" {
+		slog.Info("loading saved claude credentials")
+		if err := handler.GetClaudeProvider().Login(ctx, map[string]string{"session_key": cred.CredentialValue}); err != nil {
+			slog.Error("failed to login claude provider with saved credentials", "error", err)
+		}
+	}
+
 	pollIntervalStr := os.Getenv("QUOTA_POLL_INTERVAL")
 	pollInterval := 15 * time.Minute
 	if pollIntervalStr != "" {

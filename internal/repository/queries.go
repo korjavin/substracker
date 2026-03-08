@@ -149,6 +149,7 @@ func (q *Queries) DeleteTelegramChat(ctx context.Context, chatID string) error {
 	return err
 }
 
+
 // --- Provider Usage ---
 
 func (q *Queries) UpsertProviderUsage(ctx context.Context, arg UpsertProviderUsageParams) error {
