@@ -101,7 +101,7 @@ func (q *Queries) UpsertWebPushSubscription(ctx context.Context, arg WebpushSubs
 	_, err := q.db.ExecContext(ctx,
 		`INSERT INTO webpush_subscriptions (user_id, endpoint, p256dh, auth)
 		 VALUES (?, ?, ?, ?)
-		 ON CONFLICT(endpoint) DO UPDATE SET p256dh=excluded.p256dh, auth=excluded.auth`,
+		 ON CONFLICT(endpoint) DO UPDATE SET user_id=excluded.user_id, p256dh=excluded.p256dh, auth=excluded.auth`,
 		arg.UserID, arg.Endpoint, arg.P256dh, arg.Auth,
 	)
 	return err

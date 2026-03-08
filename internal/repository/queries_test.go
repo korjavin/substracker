@@ -101,6 +101,27 @@ func TestWebPushSubscriptionIsolation(t *testing.T) {
 	if len(subs1After) == 0 {
 		t.Errorf("user 2 should not be able to delete user 1's webpush subscription")
 	}
+
+	// Test Ownership Transfer
+	err = queries.UpsertWebPushSubscription(ctx, WebpushSubscriptionParams{
+		UserID:   2,
+		Endpoint: "endpoint1", // Same endpoint
+		P256dh:   "new_key",
+		Auth:     "new_auth",
+	})
+	if err != nil {
+		t.Fatalf("upsert ownership transfer failed: %v", err)
+	}
+
+	subs1AfterTransfer, _ := queries.ListWebPushSubscriptions(ctx, 1)
+	if len(subs1AfterTransfer) != 0 {
+		t.Errorf("user 1 should no longer own endpoint1")
+	}
+
+	subs2AfterTransfer, _ := queries.ListWebPushSubscriptions(ctx, 2)
+	if len(subs2AfterTransfer) != 2 { // Now owns endpoint2 and endpoint1
+		t.Errorf("user 2 should own 2 endpoints, got %d", len(subs2AfterTransfer))
+	}
 }
 
 func TestTelegramChatIsolation(t *testing.T) {

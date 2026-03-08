@@ -63,7 +63,8 @@ func main() {
 
 	sessionSecret := os.Getenv("SESSION_SECRET")
 	if sessionSecret == "" {
-		sessionSecret = "dev-secret-key-change-in-prod"
+		slog.Error("SESSION_SECRET environment variable is required")
+		os.Exit(1)
 	}
 	telegramBotUsername := os.Getenv("TELEGRAM_BOT_USERNAME")
 
