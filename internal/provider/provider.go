@@ -19,6 +19,12 @@ type UsageInfo struct {
 	TotalLimitSeconds int64
 	// IsBlocked is true if the quota is currently blocked.
 	IsBlocked bool
+
+	// Additional usage percentages and reset dates
+	SessionUsagePct float64   `json:"session_usage_pct,omitempty"`
+	SessionResetsAt time.Time `json:"session_resets_at,omitempty"`
+	WeeklyUsagePct  float64   `json:"weekly_usage_pct,omitempty"`
+	WeeklyResetsAt  time.Time `json:"weekly_resets_at,omitempty"`
 }
 
 // Provider defines the interface for different service providers (Claude, OpenAI, Z.ai, etc.).

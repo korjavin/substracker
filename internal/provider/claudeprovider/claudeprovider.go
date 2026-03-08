@@ -62,6 +62,12 @@ type organizationInfo struct {
 	ActiveFlags []string `json:"active_flags"` // can contain "usage_limit_exceeded"
 }
 
+type usageLimit struct {
+	Type            string    `json:"type"`             // "session", "weekly"
+	UsagePercentage float64   `json:"usage_percentage"` // 0-1
+	ResetsAt        time.Time `json:"resets_at"`
+}
+
 // FetchUsageInfo retrieves the current usage information from Claude.
 func (p *ClaudeProvider) FetchUsageInfo(ctx context.Context) (*provider.UsageInfo, error) {
 	p.mu.RLock()
@@ -186,10 +192,47 @@ func (p *ClaudeProvider) FetchUsageInfo(ctx context.Context) (*provider.UsageInf
 		}
 	}
 
+	// 4. Check specific usage limits
+	usageReq, err := http.NewRequestWithContext(ctx, http.MethodGet, fmt.Sprintf("%s/organizations/%s/usage_limits", p.baseURL, orgID), nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create usage limits request: %w", err)
+	}
+
+	usageReq.Header.Set("Cookie", fmt.Sprintf("sessionKey=%s", sessionKey))
+	usageReq.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
+
+	usageResp, err := p.httpClient.Do(usageReq)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch usage limits: %w", err)
+	}
+	defer usageResp.Body.Close()
+
+	var sessionPct, weeklyPct float64
+	var sessionResets, weeklyResets time.Time
+
+	if usageResp.StatusCode == http.StatusOK {
+		var limits []usageLimit
+		if err := json.NewDecoder(usageResp.Body).Decode(&limits); err == nil {
+			for _, limit := range limits {
+				if limit.Type == "session" {
+					sessionPct = limit.UsagePercentage
+					sessionResets = limit.ResetsAt
+				} else if limit.Type == "weekly" {
+					weeklyPct = limit.UsagePercentage
+					weeklyResets = limit.ResetsAt
+				}
+			}
+		}
+	}
+
 	return &provider.UsageInfo{
 		ResetDate:           resetDate,
 		CurrentUsageSeconds: 0, // Claude doesn't easily expose this, we rely on flags
 		TotalLimitSeconds:   0,
 		IsBlocked:           isBlocked,
+		SessionUsagePct:     sessionPct,
+		SessionResetsAt:     sessionResets,
+		WeeklyUsagePct:      weeklyPct,
+		WeeklyResetsAt:      weeklyResets,
 	}, nil
 }

@@ -149,6 +149,31 @@ func (q *Queries) DeleteTelegramChat(ctx context.Context, chatID string) error {
 	return err
 }
 
+// --- Provider Credentials ---
+
+func (q *Queries) UpsertProviderCredential(ctx context.Context, providerName, key, value string) error {
+	_, err := q.db.ExecContext(ctx,
+		`INSERT INTO provider_credentials (provider_name, credential_key, credential_value, updated_at)
+		 VALUES (?, ?, ?, CURRENT_TIMESTAMP)
+		 ON CONFLICT(provider_name, credential_key) DO UPDATE SET
+			credential_value=excluded.credential_value,
+			updated_at=CURRENT_TIMESTAMP`,
+		providerName, key, value,
+	)
+	return err
+}
+
+func (q *Queries) GetProviderCredential(ctx context.Context, providerName, key string) (string, error) {
+	row := q.db.QueryRowContext(ctx,
+		`SELECT credential_value FROM provider_credentials
+		 WHERE provider_name = ? AND credential_key = ? LIMIT 1`,
+		providerName, key,
+	)
+	var val string
+	err := row.Scan(&val)
+	return val, err
+}
+
 // --- Provider Usage ---
 
 func (q *Queries) UpsertProviderUsage(ctx context.Context, arg UpsertProviderUsageParams) error {
