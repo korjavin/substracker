@@ -34,6 +34,11 @@ func NewHandler(repo *repository.Queries, notifSvc *service.NotificationService,
 	}
 }
 
+// GetClaudeProvider returns the Claude provider instance.
+func (h *Handler) GetClaudeProvider() provider.Provider {
+	return h.claudeProvider
+}
+
 func (h *Handler) Register(mux *http.ServeMux) {
 	mux.HandleFunc("GET /health", h.health)
 
@@ -41,6 +46,7 @@ func (h *Handler) Register(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/providers/claude/login-info", h.claudeLoginInfo)
 	mux.HandleFunc("POST /api/providers/claude/login", h.claudeLogin)
 	mux.HandleFunc("GET /api/providers/claude/usage", h.claudeUsage)
+	mux.HandleFunc("GET /api/providers/usage/cached", h.cachedUsage)
 
 	// Google One Provider
 	mux.HandleFunc("GET /api/providers/googleone/login-info", h.googleOneLoginInfo)
@@ -130,6 +136,14 @@ func (h *Handler) claudeUsage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Update the cache immediately
+	_ = h.repo.UpsertProviderUsage(r.Context(), repository.UpsertProviderUsageParams{
+		ProviderName:        h.claudeProvider.Name(),
+		CurrentUsageSeconds: info.CurrentUsageSeconds,
+		TotalLimitSeconds:   info.TotalLimitSeconds,
+		IsBlocked:           info.IsBlocked,
+	})
+
 	writeJSON(w, http.StatusOK, info)
 }
 
@@ -173,6 +187,21 @@ func (h *Handler) googleOneUsage(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusOK, info)
+}
+
+func (h *Handler) cachedUsage(w http.ResponseWriter, r *http.Request) {
+	usage, err := h.repo.GetProviderUsage(r.Context(), h.claudeProvider.Name())
+	if err == sql.ErrNoRows {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "no_cached_usage"})
+		return
+	}
+	if err != nil {
+		slog.Error("get cached usage", "error", err)
+		writeError(w, http.StatusInternalServerError, "failed to get cached usage")
+		return
+	}
+
+	writeJSON(w, http.StatusOK, usage)
 }
 
 // --- Subscriptions ---

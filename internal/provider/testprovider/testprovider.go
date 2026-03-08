@@ -48,6 +48,9 @@ func (p *TestProvider) FetchUsageInfo(ctx context.Context) (*provider.UsageInfo,
 	}
 
 	return &provider.UsageInfo{
-		ResetDate: p.resetDate,
+		ResetDate:           p.resetDate,
+		CurrentUsageSeconds: 10800, // 3 hours
+		TotalLimitSeconds:   18000, // 5 hours
+		IsBlocked:           false,
 	}, nil
 }

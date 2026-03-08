@@ -3,6 +3,7 @@ package api
 import (
 	"bytes"
 	"context"
+	"database/sql"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -10,6 +11,8 @@ import (
 	"time"
 
 	"github.com/korjavin/substracker/internal/provider"
+	"github.com/korjavin/substracker/internal/repository"
+	_ "modernc.org/sqlite"
 )
 
 // mockProvider implements provider.Provider for testing API endpoints
@@ -37,7 +40,33 @@ func (m *mockProvider) FetchUsageInfo(ctx context.Context) (*provider.UsageInfo,
 	if m.sessionKey == "" {
 		return nil, provider.ErrUnauthorized
 	}
-	return &provider.UsageInfo{ResetDate: time.Now()}, nil
+	return &provider.UsageInfo{
+		ResetDate:           time.Now(),
+		CurrentUsageSeconds: 3600,
+		TotalLimitSeconds:   7200,
+		IsBlocked:           true,
+	}, nil
+}
+
+func setupTestDB(t *testing.T) *repository.Queries {
+	db, err := sql.Open("sqlite", ":memory:")
+	if err != nil {
+		t.Fatalf("failed to open memory db: %v", err)
+	}
+	_, err = db.Exec(`
+		CREATE TABLE provider_usage (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			provider_name TEXT UNIQUE NOT NULL,
+			current_usage_seconds INTEGER NOT NULL DEFAULT 0,
+			total_limit_seconds INTEGER NOT NULL DEFAULT 0,
+			is_blocked INTEGER NOT NULL DEFAULT 0,
+			fetched_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+		);
+	`)
+	if err != nil {
+		t.Fatalf("failed to create schema: %v", err)
+	}
+	return repository.New(db)
 }
 
 func TestClaudeLoginInfo(t *testing.T) {
@@ -91,8 +120,9 @@ func TestClaudeLogin(t *testing.T) {
 }
 
 func TestClaudeUsage(t *testing.T) {
+	repo := setupTestDB(t)
 	m := &mockProvider{sessionKey: "valid_key"}
-	h := &Handler{claudeProvider: m}
+	h := &Handler{repo: repo, claudeProvider: m}
 
 	// Test success
 	req := httptest.NewRequest(http.MethodGet, "/api/providers/claude/usage", nil)
@@ -121,6 +151,30 @@ func TestClaudeUsage(t *testing.T) {
 	}
 	if resUnauth["error"] != "relogin_required" {
 		t.Errorf("expected error 'relogin_required', got '%s'", resUnauth["error"])
+	}
+
+	// Test cachedUsage
+	reqCached := httptest.NewRequest(http.MethodGet, "/api/providers/usage/cached", nil)
+	rrCached := httptest.NewRecorder()
+	h.cachedUsage(rrCached, reqCached)
+
+	if rrCached.Code != http.StatusOK {
+		t.Errorf("expected status 200, got %d", rrCached.Code)
+	}
+
+	var resCached repository.ProviderUsage
+	if err := json.NewDecoder(rrCached.Body).Decode(&resCached); err != nil {
+		t.Fatalf("failed to decode response: %v", err)
+	}
+
+	if resCached.ProviderName != "MockClaude" {
+		t.Errorf("expected 'MockClaude', got '%s'", resCached.ProviderName)
+	}
+	if resCached.CurrentUsageSeconds != 3600 {
+		t.Errorf("expected 3600, got %d", resCached.CurrentUsageSeconds)
+	}
+	if !resCached.IsBlocked {
+		t.Errorf("expected IsBlocked to be true")
 	}
 }
 

@@ -57,6 +57,11 @@ type billingInfo struct {
 	} `json:"billing_period"`
 }
 
+// organizationInfo is returned by Claude's API with usage limits
+type organizationInfo struct {
+	ActiveFlags []string `json:"active_flags"` // can contain "usage_limit_exceeded"
+}
+
 // FetchUsageInfo retrieves the current usage information from Claude.
 func (p *ClaudeProvider) FetchUsageInfo(ctx context.Context) (*provider.UsageInfo, error) {
 	p.mu.RLock()
@@ -102,7 +107,6 @@ func (p *ClaudeProvider) FetchUsageInfo(ctx context.Context) (*provider.UsageInf
 	orgID := orgs[0].UUID
 
 	// 2. Fetch usage/billing info for the first organization
-	// The endpoint for Claude usage might vary, but /organizations/{orgID}/billing_info is commonly used
 	billingReq, err := http.NewRequestWithContext(ctx, http.MethodGet, fmt.Sprintf("%s/organizations/%s/billing_info", p.baseURL, orgID), nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create billing request: %w", err)
@@ -146,7 +150,46 @@ func (p *ClaudeProvider) FetchUsageInfo(ctx context.Context) (*provider.UsageInf
 		return nil, errors.New("no end_date found in billing info")
 	}
 
+	// 3. Check if the organization has "usage_limit_exceeded" flag
+	orgReq, err := http.NewRequestWithContext(ctx, http.MethodGet, fmt.Sprintf("%s/organizations/%s", p.baseURL, orgID), nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create org info request: %w", err)
+	}
+
+	orgReq.Header.Set("Cookie", fmt.Sprintf("sessionKey=%s", sessionKey))
+	orgReq.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
+
+	orgResp, err := p.httpClient.Do(orgReq)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch org info: %w", err)
+	}
+	defer orgResp.Body.Close()
+
+	if orgResp.StatusCode == http.StatusUnauthorized || orgResp.StatusCode == http.StatusForbidden {
+		return nil, fmt.Errorf("claudeprovider: %w", provider.ErrUnauthorized)
+	}
+
+	if orgResp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("unexpected status fetching org info: %d", orgResp.StatusCode)
+	}
+
+	var isBlocked bool
+	var oInfo organizationInfo
+	if err := json.NewDecoder(orgResp.Body).Decode(&oInfo); err != nil {
+		return nil, fmt.Errorf("failed to decode org info: %w", err)
+	}
+
+	for _, flag := range oInfo.ActiveFlags {
+		if flag == "usage_limit_exceeded" || flag == "message_limit_exceeded" {
+			isBlocked = true
+			break
+		}
+	}
+
 	return &provider.UsageInfo{
-		ResetDate: resetDate,
+		ResetDate:           resetDate,
+		CurrentUsageSeconds: 0, // Claude doesn't easily expose this, we rely on flags
+		TotalLimitSeconds:   0,
+		IsBlocked:           isBlocked,
 	}, nil
 }

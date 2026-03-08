@@ -31,6 +31,7 @@ Open http://localhost:5454
 | `VAPID_PUBLIC_KEY` | VAPID public key for web push | Optional |
 | `VAPID_PRIVATE_KEY` | VAPID private key for web push | Optional |
 | `VAPID_SUBJECT` | VAPID subject, e.g. `mailto:you@example.com` | If VAPID set |
+| `QUOTA_POLL_INTERVAL` | Interval to check provider usage quota | Optional (default: `15m`) |
 
 ## Generating VAPID Keys
 
