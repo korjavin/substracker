@@ -165,16 +165,24 @@ func (p *ClaudeProvider) FetchUsageInfo(ctx context.Context) (*provider.UsageInf
 	}
 	defer orgResp.Body.Close()
 
+	if orgResp.StatusCode == http.StatusUnauthorized || orgResp.StatusCode == http.StatusForbidden {
+		return nil, fmt.Errorf("claudeprovider: %w", provider.ErrUnauthorized)
+	}
+
+	if orgResp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("unexpected status fetching org info: %d", orgResp.StatusCode)
+	}
+
 	var isBlocked bool
-	if orgResp.StatusCode == http.StatusOK {
-		var oInfo organizationInfo
-		if err := json.NewDecoder(orgResp.Body).Decode(&oInfo); err == nil {
-			for _, flag := range oInfo.ActiveFlags {
-				if flag == "usage_limit_exceeded" || flag == "message_limit_exceeded" {
-					isBlocked = true
-					break
-				}
-			}
+	var oInfo organizationInfo
+	if err := json.NewDecoder(orgResp.Body).Decode(&oInfo); err != nil {
+		return nil, fmt.Errorf("failed to decode org info: %w", err)
+	}
+
+	for _, flag := range oInfo.ActiveFlags {
+		if flag == "usage_limit_exceeded" || flag == "message_limit_exceeded" {
+			isBlocked = true
+			break
 		}
 	}
 

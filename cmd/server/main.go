@@ -65,10 +65,10 @@ func main() {
 	pollIntervalStr := os.Getenv("QUOTA_POLL_INTERVAL")
 	pollInterval := 15 * time.Minute
 	if pollIntervalStr != "" {
-		if d, err := time.ParseDuration(pollIntervalStr); err == nil {
+		if d, err := time.ParseDuration(pollIntervalStr); err == nil && d > 0 {
 			pollInterval = d
 		} else {
-			slog.Warn("invalid QUOTA_POLL_INTERVAL, using default 15m", "error", err)
+			slog.Warn("invalid QUOTA_POLL_INTERVAL, using default 15m", "error", err, "value", pollIntervalStr)
 		}
 	}
 

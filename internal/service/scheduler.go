@@ -61,6 +61,11 @@ func (s *Scheduler) runBillingCheck(ctx context.Context) {
 }
 
 func (s *Scheduler) runQuotaPoll(ctx context.Context) {
+	if s.pollInterval <= 0 {
+		s.logger.Warn("scheduler: pollInterval is non-positive, quota polling disabled", "interval", s.pollInterval)
+		return
+	}
+
 	// Poll quota immediately
 	s.pollQuota(ctx)
 
