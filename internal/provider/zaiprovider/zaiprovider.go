@@ -20,7 +20,7 @@ type ZAIProvider struct {
 
 func NewZAIProvider() *ZAIProvider {
 	return &ZAIProvider{
-		baseURL: "https://z.ai",
+		baseURL: "https://api.z.ai",
 		client: &http.Client{
 			Timeout: 10 * time.Second,
 		},
@@ -48,11 +48,11 @@ type zaiUsageResponse struct {
 	Success *bool  `json:"success,omitempty"`
 	Msg     string `json:"msg,omitempty"`
 	Code    int    `json:"code,omitempty"`
-	Usage   *struct {
+	Data    *struct {
 		Current int64  `json:"current"`
 		Limit   int64  `json:"limit"`
 		ResetAt string `json:"reset_at"`
-	} `json:"usage,omitempty"`
+	} `json:"data,omitempty"`
 }
 
 func (p *ZAIProvider) FetchUsageInfo(ctx context.Context) (*provider.UsageInfo, error) {
@@ -66,12 +66,14 @@ func (p *ZAIProvider) FetchUsageInfo(ctx context.Context) (*provider.UsageInfo, 
 		return nil, provider.ErrUnauthorized
 	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, baseURL+"/api/usage", nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, baseURL+"/api/monitor/usage/quota/limit", nil)
 	if err != nil {
 		return nil, fmt.Errorf("create request: %w", err)
 	}
 
-	req.Header.Set("Cookie", fmt.Sprintf("session_cookie=%s", cookie))
+	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", cookie))
+	req.Header.Set("Origin", "https://z.ai")
+	req.Header.Set("Referer", "https://z.ai/")
 	req.Header.Set("Accept", "application/json")
 
 	resp, err := client.Do(req)
@@ -97,20 +99,20 @@ func (p *ZAIProvider) FetchUsageInfo(ctx context.Context) (*provider.UsageInfo, 
 		return nil, fmt.Errorf("api error: %s (code: %d)", usageResp.Msg, usageResp.Code)
 	}
 
-	if usageResp.Usage == nil {
+	if usageResp.Data == nil {
 		return nil, fmt.Errorf("missing usage data in response")
 	}
 
 	var resetDate time.Time
-	if usageResp.Usage.ResetAt != "" {
-		resetDate, _ = time.Parse(time.RFC3339, usageResp.Usage.ResetAt)
+	if usageResp.Data.ResetAt != "" {
+		resetDate, _ = time.Parse(time.RFC3339, usageResp.Data.ResetAt)
 	}
 
 	info := &provider.UsageInfo{
 		ResetDate:           resetDate,
-		CurrentUsageSeconds: usageResp.Usage.Current,
-		TotalLimitSeconds:   usageResp.Usage.Limit,
-		IsBlocked:           usageResp.Usage.Current >= usageResp.Usage.Limit && usageResp.Usage.Limit > 0,
+		CurrentUsageSeconds: usageResp.Data.Current,
+		TotalLimitSeconds:   usageResp.Data.Limit,
+		IsBlocked:           usageResp.Data.Current >= usageResp.Data.Limit && usageResp.Data.Limit > 0,
 	}
 
 	return info, nil

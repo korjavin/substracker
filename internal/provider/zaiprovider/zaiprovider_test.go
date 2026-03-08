@@ -44,13 +44,13 @@ func TestZAIProvider_Login(t *testing.T) {
 }
 
 func TestZAIProvider_FetchUsageInfo(t *testing.T) {
-	mockResponse := `{"usage": {"current": 500, "limit": 1000, "reset_at": "2023-10-27T10:00:00Z"}}`
+	mockResponse := `{"data": {"current": 500, "limit": 1000, "reset_at": "2023-10-27T10:00:00Z"}}`
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/api/usage" {
-			t.Errorf("expected path /api/usage, got %s", r.URL.Path)
+		if r.URL.Path != "/api/monitor/usage/quota/limit" {
+			t.Errorf("expected path /api/monitor/usage/quota/limit, got %s", r.URL.Path)
 		}
-		if r.Header.Get("Cookie") != "session_cookie=abc12345" {
-			t.Errorf("unexpected cookie: %s", r.Header.Get("Cookie"))
+		if r.Header.Get("Authorization") != "Bearer abc12345" {
+			t.Errorf("unexpected auth header: %s", r.Header.Get("Authorization"))
 		}
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)

@@ -287,6 +287,7 @@ func TestGoogleOneLogin(t *testing.T) {
 		t.Fatalf("failed to open memory db: %v", err)
 	}
 	defer dbFail.Close()
+	// Deliberately DO NOT run migrations so that the table is missing and persistence fails
 	repoFail := repository.New(dbFail)
 	hFail := &Handler{repo: repoFail, zaiProvider: m}
 
