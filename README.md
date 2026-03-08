@@ -39,6 +39,8 @@ Open http://localhost:5454
 | `VAPID_PUBLIC_KEY` | VAPID public key for web push | Optional |
 | `VAPID_PRIVATE_KEY` | VAPID private key for web push | Optional |
 | `VAPID_SUBJECT` | VAPID subject, e.g. `mailto:you@example.com` | If VAPID set |
+| `SESSION_SECRET` | Secret key for signing session cookies | Yes |
+| `TELEGRAM_BOT_USERNAME` | Telegram bot username for Login Widget | Yes |
 | `QUOTA_POLL_INTERVAL` | Interval to check provider usage quota | Optional (default: `15m`) |
 
 ## Generating VAPID Keys
@@ -46,6 +48,9 @@ Open http://localhost:5454
 ```bash
 npx web-push generate-vapid-keys
 ```
+
+## Google One Login
+If you are tracking Google One storage, you need to provide your session cookie. In the web interface, click the Settings gear icon in the Google One usage block, and enter your `SID` cookie value (or a full cookie string containing `SID`, `HSID`, and `SSID`). You can find this by opening Developer Tools -> Application -> Cookies on `one.google.com`.
 
 ## Telegram Setup
 

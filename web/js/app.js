@@ -56,248 +56,88 @@ function serviceBadge(service) {
   return `<span class="badge badge-${cls}">${label}</span>`;
 }
 
-// ---- Usage Status ----
-function getMainUsageContainer() {
-  let mainContainer = document.getElementById('main-usage-card');
-  if (!mainContainer) {
-    mainContainer = document.createElement('div');
-    mainContainer.id = 'main-usage-card';
-    const content = document.getElementById('usage-content');
-    // Ensure it goes before zai-usage-card if it exists
-    if (content.firstChild) {
-        content.insertBefore(mainContainer, content.firstChild);
-    } else {
-        content.appendChild(mainContainer);
-    }
-  }
-  return mainContainer;
-}
-
-async function loadUsage() {
-  const el = getMainUsageContainer();
-  try {
-    const data = await api('GET', '/api/providers/usage/cached');
-    renderUsage(data);
-  } catch (e) {
-    if (e.message.includes('no_cached_usage')) {
-      el.innerHTML = `<p style="font-size:13px;color:var(--text-dim)">No usage data yet. Click Refresh to fetch.</p>`;
-    } else {
-      el.innerHTML = `<p style="font-size:13px;color:var(--red)">${e.message}</p>`;
-    }
-  }
-}
-
-async function refreshUsage() {
-  const btn = document.getElementById('refresh-usage-btn');
-  const el = getMainUsageContainer();
-  btn.disabled = true;
-  el.innerHTML = `<p style="font-size:13px;color:var(--text-dim)">Fetching from provider...</p>`;
-  try {
-    const data = await api('GET', '/api/providers/claude/usage');
-    renderUsage({
-      provider_name: 'Claude',
-      current_usage_seconds: data.CurrentUsageSeconds || 0,
-      total_limit_seconds: data.TotalLimitSeconds || 0,
-      is_blocked: data.IsBlocked || false,
-      fetched_at: new Date().toISOString()
-    });
-  } catch (e) {
-    if (e.message.includes('relogin_required')) {
-      el.innerHTML = `<p style="font-size:13px;color:var(--yellow)">Login required. Go to settings or run login script.</p>`;
-    } else {
-      el.innerHTML = `<p style="font-size:13px;color:var(--red)">Error: ${e.message}</p>`;
-    }
-  } finally {
-    btn.disabled = false;
-  }
-}
-
-async function loadZAIUsage() {
-  const el = document.getElementById('usage-content');
-  // Temporary: we append to the existing content or create a separate card.
-  // We'll just fetch Z.ai explicitly to show it.
-  try {
-    const data = await api('GET', '/api/providers/zai/usage');
-    renderZAIUsage({
-      provider_name: 'Z.ai',
-      current_usage_seconds: data.CurrentUsageSeconds || 0,
-      total_limit_seconds: data.TotalLimitSeconds || 0,
-      is_blocked: data.IsBlocked || false,
-      fetched_at: new Date().toISOString()
-    });
-  } catch (e) {
-    if (e.message.includes('relogin_required')) {
-      renderZAIUsageError('Login required. <a href="#" onclick="openZAISettings(); return false;">Go to settings</a>.');
-    } else {
-      renderZAIUsageError(`Error: ${e.message}`);
-    }
-  }
-}
-
-function renderZAIUsageError(msg) {
-  let zaiCard = document.getElementById('zai-usage-card');
-  if (!zaiCard) {
-    zaiCard = document.createElement('div');
-    zaiCard.id = 'zai-usage-card';
-    zaiCard.style.marginTop = '15px';
-    zaiCard.style.paddingTop = '15px';
-    zaiCard.style.borderTop = '1px solid var(--border)';
-    document.getElementById('usage-content').appendChild(zaiCard);
-  }
-  zaiCard.innerHTML = `
-    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
-      <div style="font-size:14px; font-weight: 500;">Z.ai Status</div>
-      <button class="btn btn-secondary btn-sm" onclick="openZAISettings()" title="Settings">⚙️</button>
-    </div>
-    <p style="font-size:13px;color:var(--yellow)">${msg}</p>
-  `;
-}
-
-function renderZAIUsage(u) {
-  let zaiCard = document.getElementById('zai-usage-card');
-  if (!zaiCard) {
-    zaiCard = document.createElement('div');
-    zaiCard.id = 'zai-usage-card';
-    zaiCard.style.marginTop = '15px';
-    zaiCard.style.paddingTop = '15px';
-    zaiCard.style.borderTop = '1px solid var(--border)';
-    document.getElementById('usage-content').appendChild(zaiCard);
-  }
-
-  const percent = u.total_limit_seconds > 0 ? Math.min(100, (u.current_usage_seconds / u.total_limit_seconds) * 100) : 0;
-  const isDanger = percent > 90 || u.is_blocked;
-  const barClass = isDanger ? 'usage-bar danger' : 'usage-bar';
-  const blockedBadge = u.is_blocked ? `<span class="badge-blocked">BLOCKED</span>` : '';
-  const d = new Date(u.fetched_at);
-
-  let details = '';
-  if (u.total_limit_seconds > 0) {
-    details = `<span>${u.current_usage_seconds} / ${u.total_limit_seconds} used</span>`;
-  } else {
-    details = `<span>Status: ${u.is_blocked ? 'BLOCKED' : 'ACTIVE'}</span>`;
-  }
-
-  zaiCard.innerHTML = `
-    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
-      <div style="font-size:14px; font-weight: 500;">
-        ${esc(u.provider_name)} ${blockedBadge}
-      </div>
-      <button class="btn btn-secondary btn-sm" onclick="openZAISettings()" title="Settings">⚙️</button>
-    </div>
-    <div class="usage-bar-container">
-      <div class="${barClass}" style="width: ${percent}%"></div>
-    </div>
-    <div class="usage-details">
-      ${details}
-      <span>Last checked: ${d.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
-    </div>
-  `;
-}
-
-document.getElementById('refresh-usage-btn').addEventListener('click', () => {
-  refreshUsage();
-  loadZAIUsage();
-});
-
-function renderUsage(u) {
-  const el = getMainUsageContainer();
-  const percent = u.total_limit_seconds > 0 ? Math.min(100, (u.current_usage_seconds / u.total_limit_seconds) * 100) : 0;
-
-  // Claude's API might not provide exact numbers, but gives IsBlocked flag.
-  // If we only have IsBlocked flag, just show status.
-  if (u.total_limit_seconds === 0 && u.current_usage_seconds === 0) {
-    const statusText = u.is_blocked
-      ? `<span style="color:var(--red);font-weight:600">BLOCKED</span> (Limit exceeded)`
-      : `<span style="color:var(--green);font-weight:600">ACTIVE</span>`;
-
-    const d = new Date(u.fetched_at);
-    el.innerHTML = `
-      <div style="font-size:14px; margin-bottom:8px;">
-        <strong>${esc(u.provider_name)} Status:</strong> ${statusText}
-      </div>
-      <div class="usage-details">
-        <span>Last checked: ${d.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
-      </div>
-    `;
-    return;
-  }
-
-  const isDanger = percent > 90 || u.is_blocked;
-  const barClass = isDanger ? 'usage-bar danger' : 'usage-bar';
-  const blockedBadge = u.is_blocked ? `<span class="badge-blocked">BLOCKED</span>` : '';
-
-  const currentHours = (u.current_usage_seconds / 3600).toFixed(1);
-  const totalHours = (u.total_limit_seconds / 3600).toFixed(1);
-
-  const d = new Date(u.fetched_at);
-
-  el.innerHTML = `
-    <div style="font-size:14px; font-weight: 500;">
-      ${esc(u.provider_name)} ${blockedBadge}
-    </div>
-    <div class="usage-bar-container">
-      <div class="${barClass}" style="width: ${percent}%"></div>
-    </div>
-    <div class="usage-details">
-      <span>${currentHours}h / ${totalHours}h used</span>
-      <span>Last checked: ${d.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
-    </div>
-  `;
-}
-
-// Poll usage every 5 mins
-setInterval(() => {
-  loadUsage();
-  loadZAIUsage();
-}, 5 * 60 * 1000);
-
-// ---- Z.ai Settings Modal ----
-const zaiBackdrop = document.getElementById('zai-settings-backdrop');
-const zaiForm = document.getElementById('zai-settings-form');
-
-document.getElementById('zai-settings-cancel').addEventListener('click', closeZAISettings);
-zaiBackdrop.addEventListener('click', e => { if (e.target === zaiBackdrop) closeZAISettings(); });
-
-function openZAISettings() {
-  zaiBackdrop.style.display = 'block';
-  setTimeout(() => zaiBackdrop.classList.add('open'), 10);
-  document.getElementById('zai-session-cookie').focus();
-}
-
-function closeZAISettings() {
-  zaiBackdrop.classList.remove('open');
-  setTimeout(() => { zaiBackdrop.style.display = 'none'; }, 200);
-  zaiForm.reset();
-}
-
-zaiForm.addEventListener('submit', async e => {
-  e.preventDefault();
-  const cookie = document.getElementById('zai-session-cookie').value.trim();
-  const btn = document.getElementById('zai-settings-save');
-  btn.disabled = true;
-  try {
-    await api('POST', '/api/providers/zai/login', { session_cookie: cookie });
-    closeZAISettings();
-    loadZAIUsage();
-  } catch (err) {
-    alert('Error saving Z.ai settings: ' + err.message);
-  } finally {
-    btn.disabled = false;
-  }
-});
-
 // ---- Subscriptions ----
 let subs = [];
+let usagesMap = {};
 
 async function loadSubs() {
   try {
-    subs = await api('GET', '/api/subscriptions');
+    const [subsData, usagesData] = await Promise.all([
+      api('GET', '/api/subscriptions'),
+      api('GET', '/api/providers/usage/cached').catch(() => []) // Catch error if no usages yet
+    ]);
+    subs = subsData || [];
+    usagesMap = (usagesData || []).reduce((acc, u) => {
+      acc[u.provider_name.toLowerCase().replace(/\s/g, '')] = u;
+      return acc;
+    }, {});
+
+    // Find newest fetched_at
+    let newest = 0;
+    (usagesData || []).forEach(u => {
+      if (u.fetched_at) {
+        const d = new Date(u.fetched_at).getTime();
+        if (d > newest) newest = d;
+      }
+    });
+
+    const statusText = document.getElementById('usage-status-text');
+    if (newest > 0) {
+      statusText.textContent = `Last checked: ${new Date(newest).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}`;
+      statusText.style.display = 'inline';
+      statusText.style.color = 'var(--text-dim)';
+    } else {
+      statusText.style.display = 'none';
+    }
+
     renderSubs();
   } catch (e) {
     document.getElementById('subs-container').innerHTML =
       `<div class="empty"><div>Error: ${e.message}</div></div>`;
   }
 }
+
+document.getElementById('refresh-usage-btn').addEventListener('click', async () => {
+  const btn = document.getElementById('refresh-usage-btn');
+  const statusText = document.getElementById('usage-status-text');
+  btn.disabled = true;
+  btn.textContent = 'Refreshing...';
+  try {
+    // Only refresh claude and googleone as those are currently supported
+    const results = await Promise.allSettled([
+      api('GET', '/api/providers/claude/usage'),
+      api('GET', '/api/providers/googleone/usage')
+    ]);
+
+    // Check for errors
+    let errorMsg = null;
+    for (const r of results) {
+      if (r.status === 'rejected') {
+        const msg = r.reason.message;
+        if (msg.includes('relogin_required')) {
+          errorMsg = 'Login required for a provider. Check settings.';
+          break; // Prioritize relogin error
+        }
+        errorMsg = msg;
+      }
+    }
+
+    await loadSubs();
+
+    // overwrite status text if error happened since loadSubs will reset it
+    if (errorMsg) {
+      statusText.textContent = errorMsg;
+      statusText.style.color = 'var(--yellow)';
+      statusText.style.display = 'inline';
+    }
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Refresh Usage';
+  }
+});
+
+// Poll for changes every 5 mins
+setInterval(loadSubs, 5 * 60 * 1000);
 
 function renderSubs() {
   const el = document.getElementById('subs-container');
@@ -321,12 +161,70 @@ function renderSubs() {
       resetCell = `<span style="color:var(--text-dim)">${formatDate(nextDate)} (${days}d)</span>`;
     }
 
+    const u = usagesMap[s.service.toLowerCase().replace(/\s/g, '')];
+    let statusHtml = '<span style="color:var(--text-dim)">—</span>';
+    let usageHtml = '<span style="color:var(--text-dim)">—</span>';
+
+    if (u) {
+      if (u.is_blocked) {
+        statusHtml = `<span class="badge-blocked">BLOCKED</span>`;
+      } else {
+        statusHtml = `<span style="color:var(--green);font-weight:600;font-size:12px;">ACTIVE</span>`;
+      }
+      if (u.total_limit_seconds > 0) {
+        const curH = (u.current_usage_seconds / 3600).toFixed(1);
+        const totH = (u.total_limit_seconds / 3600).toFixed(1);
+        const pct = Math.min(100, (u.current_usage_seconds / u.total_limit_seconds) * 100);
+        const isDanger = pct > 90 || u.is_blocked;
+        const barClass = isDanger ? 'usage-bar danger' : 'usage-bar';
+        usageHtml = `
+          <div style="font-size:12px;color:var(--text-dim);margin-bottom:4px;">${curH}h / ${totH}h</div>
+          <div class="usage-bar-container-inline">
+            <div class="${barClass}" style="width: ${pct}%"></div>
+          </div>
+        `;
+      } else {
+        usageHtml = `<span style="color:var(--text-dim);font-size:12px;">No numeric data</span>`;
+      }
+    }
+
     const rowHtml = `<tr onclick="openDetail(${s.id})" style="cursor:pointer">
       <td><strong>${esc(s.name)}</strong></td>
       <td>${serviceBadge(s.service)}</td>
+      <td>${statusHtml}</td>
+      <td style="min-width:120px;">${usageHtml}</td>
       <td style="color:var(--text-dim)">Day ${s.billing_day}</td>
       <td>${resetCell}</td>
     </tr>`;
+
+    let cardUsage = '';
+    if (u) {
+      if (u.total_limit_seconds > 0) {
+        const curH = (u.current_usage_seconds / 3600).toFixed(1);
+        const totH = (u.total_limit_seconds / 3600).toFixed(1);
+        const pct = Math.min(100, (u.current_usage_seconds / u.total_limit_seconds) * 100);
+        const isDanger = pct > 90 || u.is_blocked;
+        const barClass = isDanger ? 'usage-bar danger' : 'usage-bar';
+        cardUsage = `
+          <div style="margin-top:8px;">
+            <div style="display:flex;justify-content:space-between;margin-bottom:4px;">
+              <span>Usage: ${curH}h / ${totH}h</span>
+              ${statusHtml}
+            </div>
+            <div class="usage-bar-container-inline">
+              <div class="${barClass}" style="width: ${pct}%"></div>
+            </div>
+          </div>
+        `;
+      } else {
+        cardUsage = `
+          <div style="margin-top:8px;display:flex;justify-content:space-between;">
+            <span>Usage: No numeric data</span>
+            ${statusHtml}
+          </div>
+        `;
+      }
+    }
 
     const cardHtml = `<div class="sub-card" onclick="openDetail(${s.id})" style="cursor:pointer">
       <div class="sub-card-header">
@@ -338,6 +236,7 @@ function renderSubs() {
       <div class="sub-card-details">
         <div>Reset Day: ${s.billing_day}</div>
         <div>Next Reset: ${resetCell}</div>
+        ${cardUsage}
       </div>
     </div>`;
 
@@ -349,7 +248,7 @@ function renderSubs() {
 
   el.innerHTML = `${cards}<table>
     <thead><tr>
-      <th>Name</th><th>Service</th><th>Reset Day</th><th>Next Reset</th>
+      <th>Name</th><th>Service</th><th>Status</th><th>Usage</th><th>Reset Day</th><th>Next Reset</th>
     </tr></thead>
     <tbody>${rows}</tbody>
   </table>`;
@@ -658,7 +557,28 @@ async function loadLog() {
 
 document.getElementById('refresh-log-btn').addEventListener('click', loadLog);
 
-// ---- Init ----
-loadSubs();
-loadUsage();
-loadZAIUsage();
+// ---- Auth Check & Init ----
+async function checkAuthAndInit() {
+  try {
+    const res = await fetch('/api/auth/me');
+    if (!res.ok) {
+      if (res.status === 401) {
+        window.location.href = '/login';
+      }
+      return;
+    }
+    const user = await res.json();
+    document.getElementById('user-info').textContent = `User ID: ${user.id}`;
+    const logoutBtn = document.getElementById('logout-btn');
+    logoutBtn.style.display = 'block';
+    logoutBtn.addEventListener('click', () => {
+      window.location.href = '/auth/logout';
+    });
+
+    loadSubs();
+  } catch (e) {
+    console.error("Auth check failed:", e);
+  }
+}
+
+checkAuthAndInit();

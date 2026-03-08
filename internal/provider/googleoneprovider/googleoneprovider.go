@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 
@@ -71,7 +72,13 @@ func (p *GoogleOneProvider) FetchUsageInfo(ctx context.Context) (*provider.Usage
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
 
-	req.Header.Set("Cookie", fmt.Sprintf("SID=%s", sessionCookie))
+	// The user may provide just the SID value, or a full cookie string "SID=...; HSID=...; SSID=..."
+	// We ensure it starts with SID= if they just pasted the value.
+	cookieString := sessionCookie
+	if !strings.Contains(cookieString, "=") {
+		cookieString = fmt.Sprintf("SID=%s", sessionCookie)
+	}
+	req.Header.Set("Cookie", cookieString)
 	req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
 
 	resp, err := p.httpClient.Do(req)

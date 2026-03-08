@@ -59,12 +59,19 @@ func main() {
 	mux := http.NewServeMux()
 	limiter := middleware.NewRateLimiter(10, 20) // 10 req/s, burst 20
 
-	handler := api.NewHandler(repo, notifSvc, notifCfg.VAPIDPublicKey)
+	sessionSecret := os.Getenv("SESSION_SECRET")
+	if sessionSecret == "" {
+		slog.Error("SESSION_SECRET environment variable is required")
+		os.Exit(1)
+	}
+	telegramBotUsername := os.Getenv("TELEGRAM_BOT_USERNAME")
+
+	handler := api.NewHandler(repo, notifSvc, notifCfg.VAPIDPublicKey, sessionSecret, notifCfg.TelegramBotToken, telegramBotUsername)
 	handler.Register(mux)
 
 	// Load stored Z.ai credential on startup
-	if cred, err := repo.GetProviderCredential(ctx, "Z.ai", "session_cookie"); err == nil {
-		if err := handler.GetZAIProvider().Login(ctx, map[string]string{"session_cookie": cred.CredentialValue}); err != nil {
+	if sessionCookie, err := repo.GetProviderCredential(ctx, handler.GetZAIProvider().Name(), "session_cookie"); err == nil && sessionCookie != "" {
+		if err := handler.GetZAIProvider().Login(ctx, map[string]string{"session_cookie": sessionCookie}); err != nil {
 			slog.Error("failed to restore Z.ai session", "error", err)
 		} else {
 			slog.Info("restored Z.ai session from db")
@@ -81,9 +88,30 @@ func main() {
 		}
 	}
 
+	// Load saved provider credentials
+	if sessionKey, err := repo.GetProviderCredential(ctx, handler.GetClaudeProvider().Name(), "session_key"); err == nil && sessionKey != "" {
+		if err := handler.GetClaudeProvider().Login(ctx, map[string]string{"session_key": sessionKey}); err != nil {
+			slog.Error("failed to login claude provider with saved credentials", "error", err)
+		} else {
+			slog.Info("loaded claude provider credentials from db")
+		}
+	}
+
+	if sessionCookie, err := repo.GetProviderCredential(ctx, handler.GetGoogleOneProvider().Name(), "session_cookie"); err == nil && sessionCookie != "" {
+		if err := handler.GetGoogleOneProvider().Login(ctx, map[string]string{"session_cookie": sessionCookie}); err != nil {
+			slog.Error("failed to login google one provider with saved credentials", "error", err)
+		} else {
+			slog.Info("loaded google one provider credentials from db")
+		}
+	}
+
 	// For usage polling we need access to the providers. We can expose the claude provider from handler or instantiate it separately.
 	// Since api.Handler instantiates it, let's expose it or pass a list of providers to the scheduler.
-	providers := []provider.Provider{handler.GetClaudeProvider(), handler.GetZAIProvider()}
+	providers := []provider.Provider{
+		handler.GetClaudeProvider(),
+		handler.GetGoogleOneProvider(),
+		handler.GetZAIProvider(),
+	}
 	scheduler := service.NewScheduler(repo, notifSvc, logger, providers, pollInterval)
 	go scheduler.Run(ctx)
 

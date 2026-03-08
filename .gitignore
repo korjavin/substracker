@@ -6,6 +6,9 @@
 *.db-shm
 *.db-wal
 
+# Logs
+*.log
+
 # Binaries
 /server
 /substracker
@@ -21,3 +24,4 @@
 
 # ralphex progress logs
 .ralphex/progress/
+server.pid
