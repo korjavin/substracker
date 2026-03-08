@@ -12,6 +12,7 @@ import (
 	"github.com/korjavin/substracker/internal/api"
 	"github.com/korjavin/substracker/internal/db"
 	"github.com/korjavin/substracker/internal/middleware"
+	"github.com/korjavin/substracker/internal/provider"
 	"github.com/korjavin/substracker/internal/repository"
 	"github.com/korjavin/substracker/internal/service"
 )
@@ -50,9 +51,6 @@ func main() {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	scheduler := service.NewScheduler(repo, notifSvc, logger)
-	go scheduler.Run(ctx)
-
 	port := os.Getenv("PORT")
 	if port == "" {
 		port = "5454"
@@ -70,6 +68,42 @@ func main() {
 
 	handler := api.NewHandler(repo, notifSvc, notifCfg.VAPIDPublicKey, sessionSecret, notifCfg.TelegramBotToken, telegramBotUsername)
 	handler.Register(mux)
+
+	pollIntervalStr := os.Getenv("QUOTA_POLL_INTERVAL")
+	pollInterval := 15 * time.Minute
+	if pollIntervalStr != "" {
+		if d, err := time.ParseDuration(pollIntervalStr); err == nil && d > 0 {
+			pollInterval = d
+		} else {
+			slog.Warn("invalid QUOTA_POLL_INTERVAL, using default 15m", "error", err, "value", pollIntervalStr)
+		}
+	}
+
+	// Load saved provider credentials
+	if sessionKey, err := repo.GetProviderCredential(ctx, handler.GetClaudeProvider().Name(), "session_key"); err == nil && sessionKey != "" {
+		if err := handler.GetClaudeProvider().Login(ctx, map[string]string{"session_key": sessionKey}); err != nil {
+			slog.Error("failed to login claude provider with saved credentials", "error", err)
+		} else {
+			slog.Info("loaded claude provider credentials from db")
+		}
+	}
+
+	if sessionCookie, err := repo.GetProviderCredential(ctx, handler.GetGoogleOneProvider().Name(), "session_cookie"); err == nil && sessionCookie != "" {
+		if err := handler.GetGoogleOneProvider().Login(ctx, map[string]string{"session_cookie": sessionCookie}); err != nil {
+			slog.Error("failed to login google one provider with saved credentials", "error", err)
+		} else {
+			slog.Info("loaded google one provider credentials from db")
+		}
+	}
+
+	// For usage polling we need access to the providers. We can expose the claude provider from handler or instantiate it separately.
+	// Since api.Handler instantiates it, let's expose it or pass a list of providers to the scheduler.
+	providers := []provider.Provider{
+		handler.GetClaudeProvider(),
+		handler.GetGoogleOneProvider(),
+	}
+	scheduler := service.NewScheduler(repo, notifSvc, logger, providers, pollInterval)
+	go scheduler.Run(ctx)
 
 	srv := &http.Server{
 		Addr:         ":" + port,

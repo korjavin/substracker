@@ -173,6 +173,95 @@ func (q *Queries) DeleteTelegramChat(ctx context.Context, chatID string, userID 
 	return err
 }
 
+// --- Provider Credentials ---
+
+func (q *Queries) UpsertProviderCredential(ctx context.Context, providerName, key, value string) error {
+	_, err := q.db.ExecContext(ctx,
+		`INSERT INTO provider_credentials (provider_name, credential_key, credential_value, updated_at)
+		 VALUES (?, ?, ?, CURRENT_TIMESTAMP)
+		 ON CONFLICT(provider_name, credential_key) DO UPDATE SET
+			credential_value=excluded.credential_value,
+			updated_at=CURRENT_TIMESTAMP`,
+		providerName, key, value,
+	)
+	return err
+}
+
+func (q *Queries) GetProviderCredential(ctx context.Context, providerName, key string) (string, error) {
+	row := q.db.QueryRowContext(ctx,
+		`SELECT credential_value FROM provider_credentials
+		 WHERE provider_name = ? AND credential_key = ? LIMIT 1`,
+		providerName, key,
+	)
+	var val string
+	err := row.Scan(&val)
+	return val, err
+}
+
+// --- Provider Usage ---
+
+func (q *Queries) UpsertProviderUsage(ctx context.Context, arg UpsertProviderUsageParams) error {
+	isBlockedInt := 0
+	if arg.IsBlocked {
+		isBlockedInt = 1
+	}
+	_, err := q.db.ExecContext(ctx,
+		`INSERT INTO provider_usage (provider_name, current_usage_seconds, total_limit_seconds, is_blocked, fetched_at)
+		 VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
+		 ON CONFLICT(provider_name) DO UPDATE SET
+			current_usage_seconds=excluded.current_usage_seconds,
+			total_limit_seconds=excluded.total_limit_seconds,
+			is_blocked=excluded.is_blocked,
+			fetched_at=CURRENT_TIMESTAMP`,
+		arg.ProviderName, arg.CurrentUsageSeconds, arg.TotalLimitSeconds, isBlockedInt,
+	)
+	return err
+}
+
+func (q *Queries) GetProviderUsage(ctx context.Context, providerName string) (ProviderUsage, error) {
+	row := q.db.QueryRowContext(ctx,
+		`SELECT id, provider_name, current_usage_seconds, total_limit_seconds, is_blocked, fetched_at
+		 FROM provider_usage WHERE provider_name = ? LIMIT 1`,
+		providerName,
+	)
+	var u ProviderUsage
+	var fetchedAt string
+	var isBlockedInt int
+	err := row.Scan(&u.ID, &u.ProviderName, &u.CurrentUsageSeconds, &u.TotalLimitSeconds, &isBlockedInt, &fetchedAt)
+	if err != nil {
+		return u, err
+	}
+	u.FetchedAt = parseTime(fetchedAt)
+	u.IsBlocked = isBlockedInt == 1
+	return u, nil
+}
+
+func (q *Queries) ListProviderUsage(ctx context.Context) ([]ProviderUsage, error) {
+	rows, err := q.db.QueryContext(ctx,
+		`SELECT id, provider_name, current_usage_seconds, total_limit_seconds, is_blocked, fetched_at
+		 FROM provider_usage ORDER BY provider_name`,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var usages []ProviderUsage
+	for rows.Next() {
+		var u ProviderUsage
+		var fetchedAt string
+		var isBlockedInt int
+		err := rows.Scan(&u.ID, &u.ProviderName, &u.CurrentUsageSeconds, &u.TotalLimitSeconds, &isBlockedInt, &fetchedAt)
+		if err != nil {
+			return nil, err
+		}
+		u.FetchedAt = parseTime(fetchedAt)
+		u.IsBlocked = isBlockedInt == 1
+		usages = append(usages, u)
+	}
+	return usages, rows.Err()
+}
+
 // --- Notification Log ---
 
 func (q *Queries) CreateNotificationLog(ctx context.Context, arg CreateNotificationLogParams) error {

@@ -195,36 +195,14 @@ func TestClaudeProvider_FetchUsageInfo(t *testing.T) {
 				w.Write([]byte(billingResp))
 				return
 			}
-			t.Fatalf("unexpected request to %s", r.URL.Path)
-		}))
-		defer server.Close()
-
-		p := NewClaudeProvider()
-		p.baseURL = server.URL
-		_ = p.Login(ctx, map[string]string{"session_key": "valid_key"})
-
-		info, err := p.FetchUsageInfo(ctx)
-		if err != nil {
-			t.Fatalf("expected no error, got %v", err)
-		}
-
-		expectedDate, _ := time.Parse(time.RFC3339, "2024-05-01T00:00:00Z")
-		if !info.ResetDate.Equal(expectedDate) {
-			t.Errorf("expected reset date %v, got %v", expectedDate, info.ResetDate)
-		}
-	})
-
-	t.Run("Success_DateOnly", func(t *testing.T) {
-		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			if r.URL.Path == "/organizations" {
+			if r.URL.Path == "/organizations/org-123" {
 				w.WriteHeader(http.StatusOK)
-				_ = json.NewEncoder(w).Encode([]map[string]string{{"uuid": "org-123"}})
+				w.Write([]byte(`{"active_flags": ["usage_limit_exceeded"]}`))
 				return
 			}
-			if r.URL.Path == "/organizations/org-123/billing_info" {
+			if r.URL.Path == "/organizations/org-123/usage_limits" {
 				w.WriteHeader(http.StatusOK)
-				billingResp := `{"billing_period": {"end_date": "2024-05-01"}}`
-				w.Write([]byte(billingResp))
+				w.Write([]byte(`[]`))
 				return
 			}
 			t.Fatalf("unexpected request to %s", r.URL.Path)
@@ -243,6 +221,167 @@ func TestClaudeProvider_FetchUsageInfo(t *testing.T) {
 		expectedDate, _ := time.Parse("2006-01-02", "2024-05-01")
 		if !info.ResetDate.Equal(expectedDate) {
 			t.Errorf("expected reset date %v, got %v", expectedDate, info.ResetDate)
+		}
+		if !info.IsBlocked {
+			t.Errorf("expected IsBlocked to be true")
+		}
+	})
+
+	t.Run("Success_WithUsageLimits", func(t *testing.T) {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.URL.Path == "/organizations" {
+				w.WriteHeader(http.StatusOK)
+				_ = json.NewEncoder(w).Encode([]map[string]string{{"uuid": "org-123"}})
+				return
+			}
+			if r.URL.Path == "/organizations/org-123/billing_info" {
+				w.WriteHeader(http.StatusOK)
+				billingResp := `{"billing_period": {"end_date": "2024-05-01T00:00:00Z"}}`
+				w.Write([]byte(billingResp))
+				return
+			}
+			if r.URL.Path == "/organizations/org-123" {
+				w.WriteHeader(http.StatusOK)
+				w.Write([]byte(`{"active_flags": []}`))
+				return
+			}
+			if r.URL.Path == "/organizations/org-123/usage_limits" {
+				w.WriteHeader(http.StatusOK)
+				w.Write([]byte(`[
+					{"type": "session", "usage_percentage": 0.75, "resets_at": "2024-05-01T15:00:00Z"},
+					{"type": "weekly", "usage_percentage": 0.45, "resets_at": "2024-05-06T00:00:00Z"}
+				]`))
+				return
+			}
+			t.Fatalf("unexpected request to %s", r.URL.Path)
+		}))
+		defer server.Close()
+
+		p := NewClaudeProvider()
+		p.baseURL = server.URL
+		_ = p.Login(ctx, map[string]string{"session_key": "valid_key"})
+
+		info, err := p.FetchUsageInfo(ctx)
+		if err != nil {
+			t.Fatalf("expected no error, got %v", err)
+		}
+
+		if info.SessionUsagePct == nil || *info.SessionUsagePct != 0.75 {
+			t.Errorf("expected SessionUsagePct 0.75, got %v", info.SessionUsagePct)
+		}
+		if info.WeeklyUsagePct == nil || *info.WeeklyUsagePct != 0.45 {
+			t.Errorf("expected WeeklyUsagePct 0.45, got %v", info.WeeklyUsagePct)
+		}
+		expectedSessionReset, _ := time.Parse(time.RFC3339, "2024-05-01T15:00:00Z")
+		if !info.SessionResetsAt.Equal(expectedSessionReset) {
+			t.Errorf("expected session resets_at %v, got %v", expectedSessionReset, info.SessionResetsAt)
+		}
+	})
+
+	t.Run("Success_DateOnly", func(t *testing.T) {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.URL.Path == "/organizations" {
+				w.WriteHeader(http.StatusOK)
+				_ = json.NewEncoder(w).Encode([]map[string]string{{"uuid": "org-123"}})
+				return
+			}
+			if r.URL.Path == "/organizations/org-123/billing_info" {
+				w.WriteHeader(http.StatusOK)
+				billingResp := `{"billing_period": {"end_date": "2024-05-01"}}`
+				w.Write([]byte(billingResp))
+				return
+			}
+			if r.URL.Path == "/organizations/org-123" {
+				w.WriteHeader(http.StatusOK)
+				w.Write([]byte(`{"active_flags": []}`))
+				return
+			}
+			if r.URL.Path == "/organizations/org-123/usage_limits" {
+				w.WriteHeader(http.StatusOK)
+				w.Write([]byte(`[]`))
+				return
+			}
+			t.Fatalf("unexpected request to %s", r.URL.Path)
+		}))
+		defer server.Close()
+
+		p := NewClaudeProvider()
+		p.baseURL = server.URL
+		_ = p.Login(ctx, map[string]string{"session_key": "valid_key"})
+
+		info, err := p.FetchUsageInfo(ctx)
+		if err != nil {
+			t.Fatalf("expected no error, got %v", err)
+		}
+
+		expectedDate, _ := time.Parse("2006-01-02", "2024-05-01")
+		if !info.ResetDate.Equal(expectedDate) {
+			t.Errorf("expected reset date %v, got %v", expectedDate, info.ResetDate)
+		}
+		if info.IsBlocked {
+			t.Errorf("expected IsBlocked to be false")
+		}
+	})
+
+	t.Run("Unauthorized_OrgInfo", func(t *testing.T) {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.URL.Path == "/organizations" {
+				w.WriteHeader(http.StatusOK)
+				_ = json.NewEncoder(w).Encode([]map[string]string{{"uuid": "org-123"}})
+				return
+			}
+			if r.URL.Path == "/organizations/org-123/billing_info" {
+				w.WriteHeader(http.StatusOK)
+				billingResp := `{"billing_period": {"end_date": "2024-05-01T00:00:00Z"}}`
+				w.Write([]byte(billingResp))
+				return
+			}
+			if r.URL.Path == "/organizations/org-123" {
+				w.WriteHeader(http.StatusUnauthorized)
+				return
+			}
+			t.Fatalf("unexpected request to %s", r.URL.Path)
+		}))
+		defer server.Close()
+
+		p := NewClaudeProvider()
+		p.baseURL = server.URL
+		_ = p.Login(ctx, map[string]string{"session_key": "valid_key"})
+
+		_, err := p.FetchUsageInfo(ctx)
+		if !errors.Is(err, provider.ErrUnauthorized) {
+			t.Errorf("expected ErrUnauthorized, got %v", err)
+		}
+	})
+
+	t.Run("UnexpectedStatus_OrgInfo", func(t *testing.T) {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.URL.Path == "/organizations" {
+				w.WriteHeader(http.StatusOK)
+				_ = json.NewEncoder(w).Encode([]map[string]string{{"uuid": "org-123"}})
+				return
+			}
+			if r.URL.Path == "/organizations/org-123/billing_info" {
+				w.WriteHeader(http.StatusOK)
+				billingResp := `{"billing_period": {"end_date": "2024-05-01T00:00:00Z"}}`
+				w.Write([]byte(billingResp))
+				return
+			}
+			if r.URL.Path == "/organizations/org-123" {
+				w.WriteHeader(http.StatusInternalServerError)
+				return
+			}
+			t.Fatalf("unexpected request to %s", r.URL.Path)
+		}))
+		defer server.Close()
+
+		p := NewClaudeProvider()
+		p.baseURL = server.URL
+		_ = p.Login(ctx, map[string]string{"session_key": "valid_key"})
+
+		_, err := p.FetchUsageInfo(ctx)
+		if err == nil || err.Error() != "unexpected status fetching org info: 500" {
+			t.Errorf("expected unexpected status error, got %v", err)
 		}
 	})
 

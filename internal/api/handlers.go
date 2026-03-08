@@ -41,6 +41,16 @@ func NewHandler(repo *repository.Queries, notifSvc *service.NotificationService,
 	}
 }
 
+// GetClaudeProvider returns the Claude provider instance.
+func (h *Handler) GetClaudeProvider() provider.Provider {
+	return h.claudeProvider
+}
+
+// GetGoogleOneProvider returns the Google One provider instance.
+func (h *Handler) GetGoogleOneProvider() provider.Provider {
+	return h.googleOneProvider
+}
+
 func (h *Handler) Register(mux *http.ServeMux) {
 	mux.HandleFunc("GET /health", h.health)
 
@@ -53,6 +63,7 @@ func (h *Handler) Register(mux *http.ServeMux) {
 	apiMux.HandleFunc("GET /api/providers/claude/login-info", h.claudeLoginInfo)
 	apiMux.HandleFunc("POST /api/providers/claude/login", h.claudeLogin)
 	apiMux.HandleFunc("GET /api/providers/claude/usage", h.claudeUsage)
+	apiMux.HandleFunc("GET /api/providers/usage/cached", h.cachedUsage)
 
 	// Google One Provider
 	apiMux.HandleFunc("GET /api/providers/googleone/login-info", h.googleOneLoginInfo)
@@ -152,6 +163,14 @@ func (h *Handler) claudeLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if h.repo != nil {
+		if err := h.repo.UpsertProviderCredential(r.Context(), h.claudeProvider.Name(), "session_key", req.SessionKey); err != nil {
+			slog.Error("failed to save claude credential", "error", err)
+			writeError(w, http.StatusInternalServerError, "failed to save credentials")
+			return
+		}
+	}
+
 	writeJSON(w, http.StatusOK, map[string]string{"status": "logged_in"})
 }
 
@@ -167,6 +186,13 @@ func (h *Handler) claudeUsage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Update the cache immediately
+	_ = h.repo.UpsertProviderUsage(r.Context(), repository.UpsertProviderUsageParams{
+		ProviderName:        h.claudeProvider.Name(),
+		CurrentUsageSeconds: info.CurrentUsageSeconds,
+		TotalLimitSeconds:   info.TotalLimitSeconds,
+		IsBlocked:           info.IsBlocked,
+	})
 	writeJSON(w, http.StatusOK, info)
 }
 
@@ -194,6 +220,14 @@ func (h *Handler) googleOneLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if h.repo != nil {
+		if err := h.repo.UpsertProviderCredential(r.Context(), h.googleOneProvider.Name(), "session_cookie", req.SessionCookie); err != nil {
+			slog.Error("failed to persist google one credentials", "error", err)
+			writeError(w, http.StatusInternalServerError, "failed to save credentials")
+			return
+		}
+	}
+
 	writeJSON(w, http.StatusOK, map[string]string{"status": "logged_in"})
 }
 
@@ -209,7 +243,31 @@ func (h *Handler) googleOneUsage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Update the cache immediately
+	if h.repo != nil {
+		_ = h.repo.UpsertProviderUsage(r.Context(), repository.UpsertProviderUsageParams{
+			ProviderName:        h.googleOneProvider.Name(),
+			CurrentUsageSeconds: info.CurrentUsageSeconds,
+			TotalLimitSeconds:   info.TotalLimitSeconds,
+			IsBlocked:           info.IsBlocked,
+		})
+	}
+
 	writeJSON(w, http.StatusOK, info)
+}
+
+func (h *Handler) cachedUsage(w http.ResponseWriter, r *http.Request) {
+	usages, err := h.repo.ListProviderUsage(r.Context())
+	if err != nil {
+		slog.Error("list cached usage", "error", err)
+		writeError(w, http.StatusInternalServerError, "failed to get cached usage")
+		return
+	}
+	if usages == nil {
+		usages = []repository.ProviderUsage{}
+	}
+
+	writeJSON(w, http.StatusOK, usages)
 }
 
 // --- Subscriptions ---

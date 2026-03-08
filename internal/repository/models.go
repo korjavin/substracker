@@ -66,3 +66,26 @@ type CreateNotificationLogParams struct {
 	Channel        string
 	Message        string
 }
+
+type ProviderUsage struct {
+	ID                  int64     `json:"id"`
+	ProviderName        string    `json:"provider_name"`
+	CurrentUsageSeconds int64     `json:"current_usage_seconds"`
+	TotalLimitSeconds   int64     `json:"total_limit_seconds"`
+	IsBlocked           bool      `json:"is_blocked"`
+	FetchedAt           time.Time `json:"fetched_at"`
+}
+
+type UpsertProviderUsageParams struct {
+	ProviderName        string
+	CurrentUsageSeconds int64
+	TotalLimitSeconds   int64
+	IsBlocked           bool
+}
+
+type ProviderCredential struct {
+	ProviderName    string    `json:"provider_name"`
+	CredentialKey   string    `json:"credential_key"`
+	CredentialValue string    `json:"credential_value"`
+	UpdatedAt       time.Time `json:"updated_at"`
+}
