@@ -162,18 +162,22 @@ func TestClaudeUsage(t *testing.T) {
 		t.Errorf("expected status 200, got %d", rrCached.Code)
 	}
 
-	var resCached repository.ProviderUsage
+	var resCached []repository.ProviderUsage
 	if err := json.NewDecoder(rrCached.Body).Decode(&resCached); err != nil {
 		t.Fatalf("failed to decode response: %v", err)
 	}
 
-	if resCached.ProviderName != "MockClaude" {
-		t.Errorf("expected 'MockClaude', got '%s'", resCached.ProviderName)
+	if len(resCached) != 1 {
+		t.Fatalf("expected 1 cached usage, got %d", len(resCached))
 	}
-	if resCached.CurrentUsageSeconds != 3600 {
-		t.Errorf("expected 3600, got %d", resCached.CurrentUsageSeconds)
+
+	if resCached[0].ProviderName != "MockClaude" {
+		t.Errorf("expected 'MockClaude', got '%s'", resCached[0].ProviderName)
 	}
-	if !resCached.IsBlocked {
+	if resCached[0].CurrentUsageSeconds != 3600 {
+		t.Errorf("expected 3600, got %d", resCached[0].CurrentUsageSeconds)
+	}
+	if !resCached[0].IsBlocked {
 		t.Errorf("expected IsBlocked to be true")
 	}
 }

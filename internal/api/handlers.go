@@ -190,18 +190,17 @@ func (h *Handler) googleOneUsage(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) cachedUsage(w http.ResponseWriter, r *http.Request) {
-	usage, err := h.repo.GetProviderUsage(r.Context(), h.claudeProvider.Name())
-	if err == sql.ErrNoRows {
-		writeJSON(w, http.StatusNotFound, map[string]string{"error": "no_cached_usage"})
-		return
-	}
+	usages, err := h.repo.ListProviderUsage(r.Context())
 	if err != nil {
-		slog.Error("get cached usage", "error", err)
+		slog.Error("list cached usage", "error", err)
 		writeError(w, http.StatusInternalServerError, "failed to get cached usage")
 		return
 	}
+	if usages == nil {
+		usages = []repository.ProviderUsage{}
+	}
 
-	writeJSON(w, http.StatusOK, usage)
+	writeJSON(w, http.StatusOK, usages)
 }
 
 // --- Subscriptions ---

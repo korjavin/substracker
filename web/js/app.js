@@ -56,109 +56,88 @@ function serviceBadge(service) {
   return `<span class="badge badge-${cls}">${label}</span>`;
 }
 
-// ---- Usage Status ----
-async function loadUsage() {
-  const el = document.getElementById('usage-content');
-  try {
-    const data = await api('GET', '/api/providers/usage/cached');
-    renderUsage(data);
-  } catch (e) {
-    if (e.message.includes('no_cached_usage')) {
-      el.innerHTML = `<p style="font-size:13px;color:var(--text-dim)">No usage data yet. Click Refresh to fetch.</p>`;
-    } else {
-      el.innerHTML = `<p style="font-size:13px;color:var(--red)">${e.message}</p>`;
-    }
-  }
-}
-
-async function refreshUsage() {
-  const btn = document.getElementById('refresh-usage-btn');
-  const el = document.getElementById('usage-content');
-  btn.disabled = true;
-  el.innerHTML = `<p style="font-size:13px;color:var(--text-dim)">Fetching from provider...</p>`;
-  try {
-    const data = await api('GET', '/api/providers/claude/usage');
-    renderUsage({
-      provider_name: 'Claude',
-      current_usage_seconds: data.CurrentUsageSeconds || 0,
-      total_limit_seconds: data.TotalLimitSeconds || 0,
-      is_blocked: data.IsBlocked || false,
-      fetched_at: new Date().toISOString()
-    });
-  } catch (e) {
-    if (e.message.includes('relogin_required')) {
-      el.innerHTML = `<p style="font-size:13px;color:var(--yellow)">Login required. Go to settings or run login script.</p>`;
-    } else {
-      el.innerHTML = `<p style="font-size:13px;color:var(--red)">Error: ${e.message}</p>`;
-    }
-  } finally {
-    btn.disabled = false;
-  }
-}
-
-document.getElementById('refresh-usage-btn').addEventListener('click', refreshUsage);
-
-function renderUsage(u) {
-  const el = document.getElementById('usage-content');
-  const percent = u.total_limit_seconds > 0 ? Math.min(100, (u.current_usage_seconds / u.total_limit_seconds) * 100) : 0;
-
-  // Claude's API might not provide exact numbers, but gives IsBlocked flag.
-  // If we only have IsBlocked flag, just show status.
-  if (u.total_limit_seconds === 0 && u.current_usage_seconds === 0) {
-    const statusText = u.is_blocked
-      ? `<span style="color:var(--red);font-weight:600">BLOCKED</span> (Limit exceeded)`
-      : `<span style="color:var(--green);font-weight:600">ACTIVE</span>`;
-
-    const d = new Date(u.fetched_at);
-    el.innerHTML = `
-      <div style="font-size:14px; margin-bottom:8px;">
-        <strong>${esc(u.provider_name)} Status:</strong> ${statusText}
-      </div>
-      <div class="usage-details">
-        <span>Last checked: ${d.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
-      </div>
-    `;
-    return;
-  }
-
-  const isDanger = percent > 90 || u.is_blocked;
-  const barClass = isDanger ? 'usage-bar danger' : 'usage-bar';
-  const blockedBadge = u.is_blocked ? `<span class="badge-blocked">BLOCKED</span>` : '';
-
-  const currentHours = (u.current_usage_seconds / 3600).toFixed(1);
-  const totalHours = (u.total_limit_seconds / 3600).toFixed(1);
-
-  const d = new Date(u.fetched_at);
-
-  el.innerHTML = `
-    <div style="font-size:14px; font-weight: 500;">
-      ${esc(u.provider_name)} ${blockedBadge}
-    </div>
-    <div class="usage-bar-container">
-      <div class="${barClass}" style="width: ${percent}%"></div>
-    </div>
-    <div class="usage-details">
-      <span>${currentHours}h / ${totalHours}h used</span>
-      <span>Last checked: ${d.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
-    </div>
-  `;
-}
-
-// Poll usage every 5 mins
-setInterval(loadUsage, 5 * 60 * 1000);
-
 // ---- Subscriptions ----
 let subs = [];
+let usagesMap = {};
 
 async function loadSubs() {
   try {
-    subs = await api('GET', '/api/subscriptions');
+    const [subsData, usagesData] = await Promise.all([
+      api('GET', '/api/subscriptions'),
+      api('GET', '/api/providers/usage/cached').catch(() => []) // Catch error if no usages yet
+    ]);
+    subs = subsData || [];
+    usagesMap = (usagesData || []).reduce((acc, u) => {
+      acc[u.provider_name.toLowerCase().replace(/\s/g, '')] = u;
+      return acc;
+    }, {});
+
+    // Find newest fetched_at
+    let newest = 0;
+    (usagesData || []).forEach(u => {
+      if (u.fetched_at) {
+        const d = new Date(u.fetched_at).getTime();
+        if (d > newest) newest = d;
+      }
+    });
+
+    const statusText = document.getElementById('usage-status-text');
+    if (newest > 0) {
+      statusText.textContent = `Last checked: ${new Date(newest).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}`;
+      statusText.style.display = 'inline';
+      statusText.style.color = 'var(--text-dim)';
+    } else {
+      statusText.style.display = 'none';
+    }
+
     renderSubs();
   } catch (e) {
     document.getElementById('subs-container').innerHTML =
       `<div class="empty"><div>Error: ${e.message}</div></div>`;
   }
 }
+
+document.getElementById('refresh-usage-btn').addEventListener('click', async () => {
+  const btn = document.getElementById('refresh-usage-btn');
+  const statusText = document.getElementById('usage-status-text');
+  btn.disabled = true;
+  btn.textContent = 'Refreshing...';
+  try {
+    // Only refresh claude and googleone as those are currently supported
+    const results = await Promise.allSettled([
+      api('GET', '/api/providers/claude/usage'),
+      api('GET', '/api/providers/googleone/usage')
+    ]);
+
+    // Check for errors
+    let errorMsg = null;
+    for (const r of results) {
+      if (r.status === 'rejected') {
+        const msg = r.reason.message;
+        if (msg.includes('relogin_required')) {
+          errorMsg = 'Login required for a provider. Check settings.';
+          break; // Prioritize relogin error
+        }
+        errorMsg = msg;
+      }
+    }
+
+    await loadSubs();
+
+    // overwrite status text if error happened since loadSubs will reset it
+    if (errorMsg) {
+      statusText.textContent = errorMsg;
+      statusText.style.color = 'var(--yellow)';
+      statusText.style.display = 'inline';
+    }
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Refresh Usage';
+  }
+});
+
+// Poll for changes every 5 mins
+setInterval(loadSubs, 5 * 60 * 1000);
 
 function renderSubs() {
   const el = document.getElementById('subs-container');
@@ -182,12 +161,70 @@ function renderSubs() {
       resetCell = `<span style="color:var(--text-dim)">${formatDate(nextDate)} (${days}d)</span>`;
     }
 
+    const u = usagesMap[s.service.toLowerCase().replace(/\s/g, '')];
+    let statusHtml = '<span style="color:var(--text-dim)">—</span>';
+    let usageHtml = '<span style="color:var(--text-dim)">—</span>';
+
+    if (u) {
+      if (u.is_blocked) {
+        statusHtml = `<span class="badge-blocked">BLOCKED</span>`;
+      } else {
+        statusHtml = `<span style="color:var(--green);font-weight:600;font-size:12px;">ACTIVE</span>`;
+      }
+      if (u.total_limit_seconds > 0) {
+        const curH = (u.current_usage_seconds / 3600).toFixed(1);
+        const totH = (u.total_limit_seconds / 3600).toFixed(1);
+        const pct = Math.min(100, (u.current_usage_seconds / u.total_limit_seconds) * 100);
+        const isDanger = pct > 90 || u.is_blocked;
+        const barClass = isDanger ? 'usage-bar danger' : 'usage-bar';
+        usageHtml = `
+          <div style="font-size:12px;color:var(--text-dim);margin-bottom:4px;">${curH}h / ${totH}h</div>
+          <div class="usage-bar-container-inline">
+            <div class="${barClass}" style="width: ${pct}%"></div>
+          </div>
+        `;
+      } else {
+        usageHtml = `<span style="color:var(--text-dim);font-size:12px;">No numeric data</span>`;
+      }
+    }
+
     const rowHtml = `<tr onclick="openDetail(${s.id})" style="cursor:pointer">
       <td><strong>${esc(s.name)}</strong></td>
       <td>${serviceBadge(s.service)}</td>
+      <td>${statusHtml}</td>
+      <td style="min-width:120px;">${usageHtml}</td>
       <td style="color:var(--text-dim)">Day ${s.billing_day}</td>
       <td>${resetCell}</td>
     </tr>`;
+
+    let cardUsage = '';
+    if (u) {
+      if (u.total_limit_seconds > 0) {
+        const curH = (u.current_usage_seconds / 3600).toFixed(1);
+        const totH = (u.total_limit_seconds / 3600).toFixed(1);
+        const pct = Math.min(100, (u.current_usage_seconds / u.total_limit_seconds) * 100);
+        const isDanger = pct > 90 || u.is_blocked;
+        const barClass = isDanger ? 'usage-bar danger' : 'usage-bar';
+        cardUsage = `
+          <div style="margin-top:8px;">
+            <div style="display:flex;justify-content:space-between;margin-bottom:4px;">
+              <span>Usage: ${curH}h / ${totH}h</span>
+              ${statusHtml}
+            </div>
+            <div class="usage-bar-container-inline">
+              <div class="${barClass}" style="width: ${pct}%"></div>
+            </div>
+          </div>
+        `;
+      } else {
+        cardUsage = `
+          <div style="margin-top:8px;display:flex;justify-content:space-between;">
+            <span>Usage: No numeric data</span>
+            ${statusHtml}
+          </div>
+        `;
+      }
+    }
 
     const cardHtml = `<div class="sub-card" onclick="openDetail(${s.id})" style="cursor:pointer">
       <div class="sub-card-header">
@@ -199,6 +236,7 @@ function renderSubs() {
       <div class="sub-card-details">
         <div>Reset Day: ${s.billing_day}</div>
         <div>Next Reset: ${resetCell}</div>
+        ${cardUsage}
       </div>
     </div>`;
 
@@ -210,7 +248,7 @@ function renderSubs() {
 
   el.innerHTML = `${cards}<table>
     <thead><tr>
-      <th>Name</th><th>Service</th><th>Reset Day</th><th>Next Reset</th>
+      <th>Name</th><th>Service</th><th>Status</th><th>Usage</th><th>Reset Day</th><th>Next Reset</th>
     </tr></thead>
     <tbody>${rows}</tbody>
   </table>`;
@@ -521,4 +559,3 @@ document.getElementById('refresh-log-btn').addEventListener('click', loadLog);
 
 // ---- Init ----
 loadSubs();
-loadUsage();
