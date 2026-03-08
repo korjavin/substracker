@@ -193,18 +193,22 @@ func TestClaudeUsage(t *testing.T) {
 		t.Errorf("expected status 200, got %d", rrCached.Code)
 	}
 
-	var resCached repository.ProviderUsage
+	var resCached []repository.ProviderUsage
 	if err := json.NewDecoder(rrCached.Body).Decode(&resCached); err != nil {
 		t.Fatalf("failed to decode response: %v", err)
 	}
 
-	if resCached.ProviderName != "MockClaude" {
-		t.Errorf("expected 'MockClaude', got '%s'", resCached.ProviderName)
+	if len(resCached) != 1 {
+		t.Fatalf("expected 1 cached usage, got %d", len(resCached))
 	}
-	if resCached.CurrentUsageSeconds != 3600 {
-		t.Errorf("expected 3600, got %d", resCached.CurrentUsageSeconds)
+
+	if resCached[0].ProviderName != "MockClaude" {
+		t.Errorf("expected 'MockClaude', got '%s'", resCached[0].ProviderName)
 	}
-	if !resCached.IsBlocked {
+	if resCached[0].CurrentUsageSeconds != 3600 {
+		t.Errorf("expected 3600, got %d", resCached[0].CurrentUsageSeconds)
+	}
+	if !resCached[0].IsBlocked {
 		t.Errorf("expected IsBlocked to be true")
 	}
 }
@@ -260,8 +264,9 @@ func TestGoogleOneLoginInfo(t *testing.T) {
 }
 
 func TestGoogleOneLogin(t *testing.T) {
+	repo := setupTestDB(t)
 	m := &mockGoogleOneProvider{}
-	h := &Handler{googleOneProvider: m}
+	h := &Handler{repo: repo, googleOneProvider: m}
 
 	body := []byte(`{"session_cookie": "test_cookie"}`)
 	req := httptest.NewRequest(http.MethodPost, "/api/providers/googleone/login", bytes.NewBuffer(body))
@@ -277,6 +282,15 @@ func TestGoogleOneLogin(t *testing.T) {
 		t.Errorf("expected mock provider to store 'test_cookie', got '%s'", m.sessionCookie)
 	}
 
+	// verify credential persistence
+	savedCookie, err := repo.GetProviderCredential(context.Background(), m.Name(), "session_cookie")
+	if err != nil {
+		t.Errorf("expected to find credential in DB, got error: %v", err)
+	}
+	if savedCookie != "test_cookie" {
+		t.Errorf("expected saved credential to be 'test_cookie', got '%s'", savedCookie)
+	}
+
 	// Test invalid body
 	reqInvalid := httptest.NewRequest(http.MethodPost, "/api/providers/googleone/login", bytes.NewBuffer([]byte(`{invalid_json}`)))
 	rrInvalid := httptest.NewRecorder()
@@ -288,8 +302,9 @@ func TestGoogleOneLogin(t *testing.T) {
 }
 
 func TestGoogleOneUsage(t *testing.T) {
+	repo := setupTestDB(t)
 	m := &mockGoogleOneProvider{sessionCookie: "valid_cookie"}
-	h := &Handler{googleOneProvider: m}
+	h := &Handler{repo: repo, googleOneProvider: m}
 
 	// Test success
 	req := httptest.NewRequest(http.MethodGet, "/api/providers/googleone/usage", nil)
@@ -298,6 +313,14 @@ func TestGoogleOneUsage(t *testing.T) {
 
 	if rr.Code != http.StatusOK {
 		t.Errorf("expected status 200, got %d", rr.Code)
+	}
+
+	usage, err := repo.GetProviderUsage(context.Background(), "MockGoogleOne")
+	if err != nil {
+		t.Fatalf("failed to get cached usage: %v", err)
+	}
+	if usage.ProviderName != "MockGoogleOne" {
+		t.Errorf("expected cached usage for 'MockGoogleOne', got '%s'", usage.ProviderName)
 	}
 
 	// Test unauthorized

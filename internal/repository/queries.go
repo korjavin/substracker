@@ -212,6 +212,32 @@ func (q *Queries) GetProviderUsage(ctx context.Context, providerName string) (Pr
 	return u, nil
 }
 
+func (q *Queries) ListProviderUsage(ctx context.Context) ([]ProviderUsage, error) {
+	rows, err := q.db.QueryContext(ctx,
+		`SELECT id, provider_name, current_usage_seconds, total_limit_seconds, is_blocked, fetched_at
+		 FROM provider_usage ORDER BY provider_name`,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var usages []ProviderUsage
+	for rows.Next() {
+		var u ProviderUsage
+		var fetchedAt string
+		var isBlockedInt int
+		err := rows.Scan(&u.ID, &u.ProviderName, &u.CurrentUsageSeconds, &u.TotalLimitSeconds, &isBlockedInt, &fetchedAt)
+		if err != nil {
+			return nil, err
+		}
+		u.FetchedAt = parseTime(fetchedAt)
+		u.IsBlocked = isBlockedInt == 1
+		usages = append(usages, u)
+	}
+	return usages, rows.Err()
+}
+
 // --- Notification Log ---
 
 func (q *Queries) CreateNotificationLog(ctx context.Context, arg CreateNotificationLogParams) error {

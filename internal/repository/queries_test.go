@@ -76,6 +76,28 @@ func TestProviderUsage(t *testing.T) {
 	if u.CurrentUsageSeconds != 7200 || !u.IsBlocked {
 		t.Errorf("unexpected values after update: %+v", u)
 	}
+
+	// 4. List
+	err = repo.UpsertProviderUsage(ctx, UpsertProviderUsageParams{
+		ProviderName:        "GoogleOne",
+		CurrentUsageSeconds: 100,
+		TotalLimitSeconds:   1000,
+		IsBlocked:           false,
+	})
+	if err != nil {
+		t.Fatalf("insert failed: %v", err)
+	}
+
+	usages, err := repo.ListProviderUsage(ctx)
+	if err != nil {
+		t.Fatalf("list failed: %v", err)
+	}
+	if len(usages) != 2 {
+		t.Fatalf("expected 2 usages, got %d", len(usages))
+	}
+	if usages[0].ProviderName != "Claude" || usages[1].ProviderName != "GoogleOne" {
+		t.Errorf("unexpected list results: %+v", usages)
+	}
 }
 
 func TestProviderCredentials(t *testing.T) {

@@ -220,25 +220,17 @@ func (h *Handler) googleOneUsage(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) cachedUsage(w http.ResponseWriter, r *http.Request) {
-	// The client might want all providers' cached usage, but currently the frontend expects a single object for Claude.
-	// We'll update this to return a list of all usages.
-	providerName := r.URL.Query().Get("provider")
-	if providerName == "" {
-		providerName = h.claudeProvider.Name() // fallback for old requests
-	}
-
-	usage, err := h.repo.GetProviderUsage(r.Context(), providerName)
-	if err == sql.ErrNoRows {
-		writeJSON(w, http.StatusNotFound, map[string]string{"error": "no_cached_usage"})
-		return
-	}
+	usages, err := h.repo.ListProviderUsage(r.Context())
 	if err != nil {
-		slog.Error("get cached usage", "error", err)
+		slog.Error("list cached usage", "error", err)
 		writeError(w, http.StatusInternalServerError, "failed to get cached usage")
 		return
 	}
+	if usages == nil {
+		usages = []repository.ProviderUsage{}
+	}
 
-	writeJSON(w, http.StatusOK, usage)
+	writeJSON(w, http.StatusOK, usages)
 }
 
 // --- Subscriptions ---
