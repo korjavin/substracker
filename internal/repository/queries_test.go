@@ -99,3 +99,72 @@ func TestProviderUsage(t *testing.T) {
 		t.Errorf("unexpected list results: %+v", usages)
 	}
 }
+
+func TestProviderCredentials(t *testing.T) {
+	db, err := sql.Open("sqlite", ":memory:")
+	if err != nil {
+		t.Fatalf("failed to open memory db: %v", err)
+	}
+	defer db.Close()
+
+	_, err = db.Exec(`
+		CREATE TABLE provider_credentials (
+			provider_name TEXT NOT NULL,
+			key TEXT NOT NULL,
+			value TEXT NOT NULL,
+			updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+			PRIMARY KEY (provider_name, key)
+		);
+	`)
+	if err != nil {
+		t.Fatalf("failed to create schema: %v", err)
+	}
+
+	repo := New(db)
+	ctx := context.Background()
+
+	// 1. Get empty
+	creds, err := repo.GetProviderCredentials(ctx, "Claude")
+	if err != nil {
+		t.Fatalf("get failed: %v", err)
+	}
+	if len(creds) != 0 {
+		t.Errorf("expected empty map, got %v", creds)
+	}
+
+	// 2. Insert
+	err = repo.UpsertProviderCredential(ctx, UpsertProviderCredentialParams{
+		ProviderName: "Claude",
+		Key:          "session_key",
+		Value:        "key123",
+	})
+	if err != nil {
+		t.Fatalf("insert failed: %v", err)
+	}
+
+	creds, err = repo.GetProviderCredentials(ctx, "Claude")
+	if err != nil {
+		t.Fatalf("get failed: %v", err)
+	}
+	if len(creds) != 1 || creds["session_key"] != "key123" {
+		t.Errorf("unexpected values after insert: %+v", creds)
+	}
+
+	// 3. Update
+	err = repo.UpsertProviderCredential(ctx, UpsertProviderCredentialParams{
+		ProviderName: "Claude",
+		Key:          "session_key",
+		Value:        "key456",
+	})
+	if err != nil {
+		t.Fatalf("update failed: %v", err)
+	}
+
+	creds, err = repo.GetProviderCredentials(ctx, "Claude")
+	if err != nil {
+		t.Fatalf("get after update failed: %v", err)
+	}
+	if creds["session_key"] != "key456" {
+		t.Errorf("unexpected values after update: %+v", creds)
+	}
+}

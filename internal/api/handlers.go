@@ -39,6 +39,11 @@ func (h *Handler) GetClaudeProvider() provider.Provider {
 	return h.claudeProvider
 }
 
+// GetGoogleOneProvider returns the Google One provider instance.
+func (h *Handler) GetGoogleOneProvider() provider.Provider {
+	return h.googleOneProvider
+}
+
 func (h *Handler) Register(mux *http.ServeMux) {
 	mux.HandleFunc("GET /health", h.health)
 
@@ -121,6 +126,16 @@ func (h *Handler) claudeLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if err := h.repo.UpsertProviderCredential(r.Context(), repository.UpsertProviderCredentialParams{
+		ProviderName: h.claudeProvider.Name(),
+		Key:          "session_key",
+		Value:        req.SessionKey,
+	}); err != nil {
+		slog.Error("failed to persist claude credentials", "error", err)
+		writeError(w, http.StatusInternalServerError, "failed to save credentials")
+		return
+	}
+
 	writeJSON(w, http.StatusOK, map[string]string{"status": "logged_in"})
 }
 
@@ -168,6 +183,16 @@ func (h *Handler) googleOneLogin(w http.ResponseWriter, r *http.Request) {
 	err := h.googleOneProvider.Login(r.Context(), map[string]string{"session_cookie": req.SessionCookie})
 	if err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	if err := h.repo.UpsertProviderCredential(r.Context(), repository.UpsertProviderCredentialParams{
+		ProviderName: h.googleOneProvider.Name(),
+		Key:          "session_cookie",
+		Value:        req.SessionCookie,
+	}); err != nil {
+		slog.Error("failed to persist google one credentials", "error", err)
+		writeError(w, http.StatusInternalServerError, "failed to save credentials")
 		return
 	}
 

@@ -62,6 +62,13 @@ func setupTestDB(t *testing.T) *repository.Queries {
 			is_blocked INTEGER NOT NULL DEFAULT 0,
 			fetched_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 		);
+		CREATE TABLE provider_credentials (
+			provider_name TEXT NOT NULL,
+			key TEXT NOT NULL,
+			value TEXT NOT NULL,
+			updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+			PRIMARY KEY (provider_name, key)
+		);
 	`)
 	if err != nil {
 		t.Fatalf("failed to create schema: %v", err)
@@ -92,8 +99,9 @@ func TestClaudeLoginInfo(t *testing.T) {
 }
 
 func TestClaudeLogin(t *testing.T) {
+	repo := setupTestDB(t)
 	m := &mockProvider{}
-	h := &Handler{claudeProvider: m}
+	h := &Handler{repo: repo, claudeProvider: m}
 
 	body := []byte(`{"session_key": "test_key"}`)
 	req := httptest.NewRequest(http.MethodPost, "/api/providers/claude/login", bytes.NewBuffer(body))
@@ -107,6 +115,15 @@ func TestClaudeLogin(t *testing.T) {
 
 	if m.sessionKey != "test_key" {
 		t.Errorf("expected mock provider to store 'test_key', got '%s'", m.sessionKey)
+	}
+
+	// Verify persistence
+	creds, err := repo.GetProviderCredentials(context.Background(), "MockClaude")
+	if err != nil {
+		t.Fatalf("failed to get persisted credentials: %v", err)
+	}
+	if creds["session_key"] != "test_key" {
+		t.Errorf("expected persisted 'test_key', got '%s'", creds["session_key"])
 	}
 
 	// Test invalid body
@@ -233,8 +250,9 @@ func TestGoogleOneLoginInfo(t *testing.T) {
 }
 
 func TestGoogleOneLogin(t *testing.T) {
+	repo := setupTestDB(t)
 	m := &mockGoogleOneProvider{}
-	h := &Handler{googleOneProvider: m}
+	h := &Handler{repo: repo, googleOneProvider: m}
 
 	body := []byte(`{"session_cookie": "test_cookie"}`)
 	req := httptest.NewRequest(http.MethodPost, "/api/providers/googleone/login", bytes.NewBuffer(body))
@@ -248,6 +266,15 @@ func TestGoogleOneLogin(t *testing.T) {
 
 	if m.sessionCookie != "test_cookie" {
 		t.Errorf("expected mock provider to store 'test_cookie', got '%s'", m.sessionCookie)
+	}
+
+	// Verify persistence
+	creds, err := repo.GetProviderCredentials(context.Background(), "MockGoogleOne")
+	if err != nil {
+		t.Fatalf("failed to get persisted credentials: %v", err)
+	}
+	if creds["session_cookie"] != "test_cookie" {
+		t.Errorf("expected persisted 'test_cookie', got '%s'", creds["session_cookie"])
 	}
 
 	// Test invalid body

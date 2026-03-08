@@ -76,3 +76,16 @@ type UpsertProviderUsageParams struct {
 	TotalLimitSeconds   int64
 	IsBlocked           bool
 }
+
+type ProviderCredential struct {
+	ProviderName string    `json:"provider_name"`
+	Key          string    `json:"key"`
+	Value        string    `json:"value"`
+	UpdatedAt    time.Time `json:"updated_at"`
+}
+
+type UpsertProviderCredentialParams struct {
+	ProviderName string
+	Key          string
+	Value        string
+}

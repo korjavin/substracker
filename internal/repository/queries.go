@@ -187,6 +187,39 @@ func (q *Queries) GetProviderUsage(ctx context.Context, providerName string) (Pr
 	return u, nil
 }
 
+func (q *Queries) UpsertProviderCredential(ctx context.Context, arg UpsertProviderCredentialParams) error {
+	_, err := q.db.ExecContext(ctx,
+		`INSERT INTO provider_credentials (provider_name, key, value, updated_at)
+		 VALUES (?, ?, ?, CURRENT_TIMESTAMP)
+		 ON CONFLICT(provider_name, key) DO UPDATE SET
+			value=excluded.value,
+			updated_at=CURRENT_TIMESTAMP`,
+		arg.ProviderName, arg.Key, arg.Value,
+	)
+	return err
+}
+
+func (q *Queries) GetProviderCredentials(ctx context.Context, providerName string) (map[string]string, error) {
+	rows, err := q.db.QueryContext(ctx,
+		`SELECT key, value FROM provider_credentials WHERE provider_name = ?`,
+		providerName,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	creds := make(map[string]string)
+	for rows.Next() {
+		var k, v string
+		if err := rows.Scan(&k, &v); err != nil {
+			return nil, err
+		}
+		creds[k] = v
+	}
+	return creds, rows.Err()
+}
+
 func (q *Queries) ListProviderUsage(ctx context.Context) ([]ProviderUsage, error) {
 	rows, err := q.db.QueryContext(ctx,
 		`SELECT id, provider_name, current_usage_seconds, total_limit_seconds, is_blocked, fetched_at
