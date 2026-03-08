@@ -211,6 +211,14 @@ func (h *Handler) googleOneUsage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Update the cache immediately
+	_ = h.repo.UpsertProviderUsage(r.Context(), repository.UpsertProviderUsageParams{
+		ProviderName:        h.googleOneProvider.Name(),
+		CurrentUsageSeconds: info.CurrentUsageSeconds,
+		TotalLimitSeconds:   info.TotalLimitSeconds,
+		IsBlocked:           info.IsBlocked,
+	})
+
 	writeJSON(w, http.StatusOK, info)
 }
 

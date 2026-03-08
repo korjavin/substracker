@@ -288,8 +288,9 @@ func TestGoogleOneLogin(t *testing.T) {
 }
 
 func TestGoogleOneUsage(t *testing.T) {
+	repo := setupTestDB(t)
 	m := &mockGoogleOneProvider{sessionCookie: "valid_cookie"}
-	h := &Handler{googleOneProvider: m}
+	h := &Handler{repo: repo, googleOneProvider: m}
 
 	// Test success
 	req := httptest.NewRequest(http.MethodGet, "/api/providers/googleone/usage", nil)
@@ -298,6 +299,15 @@ func TestGoogleOneUsage(t *testing.T) {
 
 	if rr.Code != http.StatusOK {
 		t.Errorf("expected status 200, got %d", rr.Code)
+	}
+
+	// Verify caching
+	usage, err := repo.GetProviderUsage(context.Background(), "MockGoogleOne")
+	if err != nil {
+		t.Fatalf("failed to get cached usage: %v", err)
+	}
+	if usage.ProviderName != "MockGoogleOne" {
+		t.Errorf("expected cached usage for 'MockGoogleOne', got '%s'", usage.ProviderName)
 	}
 
 	// Test unauthorized
