@@ -105,12 +105,21 @@ func main() {
 		}
 	}
 
+	if sessionToken, err := repo.GetProviderCredential(ctx, handler.GetOpenAIProvider().Name(), "session_token"); err == nil && sessionToken != "" {
+		if err := handler.GetOpenAIProvider().Login(ctx, map[string]string{"session_token": sessionToken}); err != nil {
+			slog.Error("failed to login openai provider with saved credentials", "error", err)
+		} else {
+			slog.Info("loaded openai provider credentials from db")
+		}
+	}
+
 	// For usage polling we need access to the providers. We can expose the claude provider from handler or instantiate it separately.
 	// Since api.Handler instantiates it, let's expose it or pass a list of providers to the scheduler.
 	providers := []provider.Provider{
 		handler.GetClaudeProvider(),
 		handler.GetGoogleOneProvider(),
 		handler.GetZAIProvider(),
+		handler.GetOpenAIProvider(),
 	}
 	scheduler := service.NewScheduler(repo, notifSvc, logger, providers, pollInterval)
 	go scheduler.Run(ctx)

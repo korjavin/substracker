@@ -315,6 +315,137 @@ func TestGoogleOneLogin(t *testing.T) {
 	}
 }
 
+// mockOpenAIProvider implements provider.Provider for testing API endpoints
+type mockOpenAIProvider struct {
+	sessionToken string
+	shouldFail   bool
+}
+
+func (m *mockOpenAIProvider) Name() string {
+	return "MockOpenAI"
+}
+
+func (m *mockOpenAIProvider) Login(ctx context.Context, credentials map[string]string) error {
+	if m.shouldFail {
+		return provider.ErrUnauthorized
+	}
+	m.sessionToken = credentials["session_token"]
+	return nil
+}
+
+func (m *mockOpenAIProvider) FetchUsageInfo(ctx context.Context) (*provider.UsageInfo, error) {
+	if m.shouldFail {
+		return nil, provider.ErrUnauthorized
+	}
+	if m.sessionToken == "" {
+		return nil, provider.ErrUnauthorized
+	}
+	return &provider.UsageInfo{ResetDate: time.Now()}, nil
+}
+
+func TestOpenAILoginInfo(t *testing.T) {
+	h := &Handler{}
+
+	req := httptest.NewRequest(http.MethodGet, "/api/providers/openai/login-info", nil)
+	rr := httptest.NewRecorder()
+
+	h.openaiLoginInfo(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Errorf("expected status 200, got %d", rr.Code)
+	}
+
+	var res map[string]string
+	if err := json.NewDecoder(rr.Body).Decode(&res); err != nil {
+		t.Fatalf("failed to decode response: %v", err)
+	}
+
+	if res["url"] != "https://platform.openai.com/" {
+		t.Errorf("expected url 'https://platform.openai.com/', got '%s'", res["url"])
+	}
+}
+
+func TestOpenAILogin(t *testing.T) {
+	repo := setupTestDB(t)
+	m := &mockOpenAIProvider{}
+	h := &Handler{repo: repo, openaiProvider: m}
+
+	body := []byte(`{"session_token": "test_token"}`)
+	req := httptest.NewRequest(http.MethodPost, "/api/providers/openai/login", bytes.NewBuffer(body))
+	rr := httptest.NewRecorder()
+
+	h.openaiLogin(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Errorf("expected status 200, got %d", rr.Code)
+	}
+
+	if m.sessionToken != "test_token" {
+		t.Errorf("expected mock provider to store 'test_token', got '%s'", m.sessionToken)
+	}
+
+	// verify credential persistence
+	savedToken, err := repo.GetProviderCredential(context.Background(), m.Name(), "session_token")
+	if err != nil {
+		t.Errorf("expected to find credential in DB, got error: %v", err)
+	}
+	if savedToken != "test_token" {
+		t.Errorf("expected saved credential to be 'test_token', got '%s'", savedToken)
+	}
+
+	// Test invalid body
+	reqInvalid := httptest.NewRequest(http.MethodPost, "/api/providers/openai/login", bytes.NewBuffer([]byte(`{invalid_json}`)))
+	rrInvalid := httptest.NewRecorder()
+	h.openaiLogin(rrInvalid, reqInvalid)
+
+	if rrInvalid.Code != http.StatusBadRequest {
+		t.Errorf("expected status 400 for invalid json, got %d", rrInvalid.Code)
+	}
+}
+
+func TestOpenAIUsage(t *testing.T) {
+	repo := setupTestDB(t)
+	m := &mockOpenAIProvider{sessionToken: "valid_token"}
+	h := &Handler{repo: repo, openaiProvider: m}
+
+	// Test success
+	req := httptest.NewRequest(http.MethodGet, "/api/providers/openai/usage", nil)
+	rr := httptest.NewRecorder()
+	h.openaiUsage(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Errorf("expected status 200, got %d", rr.Code)
+	}
+
+	usage, err := repo.GetProviderUsage(context.Background(), "MockOpenAI")
+	if err != nil {
+		t.Fatalf("failed to get cached usage: %v", err)
+	}
+	if usage.ProviderName != "MockOpenAI" {
+		t.Errorf("expected cached usage for 'MockOpenAI', got '%s'", usage.ProviderName)
+	}
+
+	// Test unauthorized
+	mUnauthorized := &mockOpenAIProvider{shouldFail: true}
+	hUnauthorized := &Handler{openaiProvider: mUnauthorized}
+
+	reqUnauth := httptest.NewRequest(http.MethodGet, "/api/providers/openai/usage", nil)
+	rrUnauth := httptest.NewRecorder()
+	hUnauthorized.openaiUsage(rrUnauth, reqUnauth)
+
+	if rrUnauth.Code != http.StatusUnauthorized {
+		t.Errorf("expected status 401, got %d", rrUnauth.Code)
+	}
+
+	var resUnauth map[string]string
+	if err := json.NewDecoder(rrUnauth.Body).Decode(&resUnauth); err != nil {
+		t.Fatalf("failed to decode response: %v", err)
+	}
+	if resUnauth["error"] != "relogin_required" {
+		t.Errorf("expected error 'relogin_required', got '%s'", resUnauth["error"])
+	}
+}
+
 func TestGoogleOneUsage(t *testing.T) {
 	repo := setupTestDB(t)
 	m := &mockGoogleOneProvider{sessionCookie: "valid_cookie"}

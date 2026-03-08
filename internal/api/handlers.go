@@ -13,6 +13,7 @@ import (
 	"github.com/korjavin/substracker/internal/provider"
 	"github.com/korjavin/substracker/internal/provider/claudeprovider"
 	"github.com/korjavin/substracker/internal/provider/googleoneprovider"
+	"github.com/korjavin/substracker/internal/provider/openaiprovider"
 	"github.com/korjavin/substracker/internal/provider/zaiprovider"
 	"github.com/korjavin/substracker/internal/repository"
 	"github.com/korjavin/substracker/internal/service"
@@ -28,6 +29,7 @@ type Handler struct {
 	claudeProvider      provider.Provider
 	googleOneProvider   provider.Provider
 	zaiProvider         provider.Provider
+	openaiProvider      provider.Provider
 }
 
 func NewHandler(repo *repository.Queries, notifSvc *service.NotificationService, vapidPublicKey, sessionSecret, telegramBotToken, telegramBotUsername string) *Handler {
@@ -41,6 +43,7 @@ func NewHandler(repo *repository.Queries, notifSvc *service.NotificationService,
 		claudeProvider:      claudeprovider.NewClaudeProvider(),
 		googleOneProvider:   googleoneprovider.NewGoogleOneProvider(),
 		zaiProvider:         zaiprovider.NewZAIProvider(),
+		openaiProvider:      openaiprovider.NewOpenAIProvider(),
 	}
 }
 
@@ -57,6 +60,11 @@ func (h *Handler) GetClaudeProvider() provider.Provider {
 // GetGoogleOneProvider returns the Google One provider instance.
 func (h *Handler) GetGoogleOneProvider() provider.Provider {
 	return h.googleOneProvider
+}
+
+// GetOpenAIProvider returns the OpenAI provider instance.
+func (h *Handler) GetOpenAIProvider() provider.Provider {
+	return h.openaiProvider
 }
 
 func (h *Handler) Register(mux *http.ServeMux) {
@@ -82,6 +90,11 @@ func (h *Handler) Register(mux *http.ServeMux) {
 	apiMux.HandleFunc("GET /api/providers/zai/login-info", h.zaiLoginInfo)
 	apiMux.HandleFunc("POST /api/providers/zai/login", h.zaiLogin)
 	apiMux.HandleFunc("GET /api/providers/zai/usage", h.zaiUsage)
+
+	// OpenAI Provider
+	apiMux.HandleFunc("GET /api/providers/openai/login-info", h.openaiLoginInfo)
+	apiMux.HandleFunc("POST /api/providers/openai/login", h.openaiLogin)
+	apiMux.HandleFunc("GET /api/providers/openai/usage", h.openaiUsage)
 
 	// Subscriptions
 	apiMux.HandleFunc("GET /api/subscriptions", h.listSubscriptions)
@@ -322,6 +335,66 @@ func (h *Handler) zaiUsage(w http.ResponseWriter, r *http.Request) {
 		TotalLimitSeconds:   info.TotalLimitSeconds,
 		IsBlocked:           info.IsBlocked,
 	})
+
+	writeJSON(w, http.StatusOK, info)
+}
+
+// --- OpenAI Provider ---
+
+func (h *Handler) openaiLoginInfo(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, http.StatusOK, map[string]string{
+		"url":          "https://platform.openai.com/",
+		"instructions": "Log in to platform.openai.com, open Developer Tools -> Application -> Cookies, and copy the value of the '__Secure-next-auth.session-token' cookie.",
+	})
+}
+
+func (h *Handler) openaiLogin(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		SessionToken string `json:"session_token"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+
+	err := h.openaiProvider.Login(r.Context(), map[string]string{"session_token": req.SessionToken})
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	if h.repo != nil {
+		if err := h.repo.UpsertProviderCredential(r.Context(), h.openaiProvider.Name(), "session_token", req.SessionToken); err != nil {
+			slog.Error("failed to persist openai credentials", "error", err)
+			writeError(w, http.StatusInternalServerError, "failed to save credentials")
+			return
+		}
+	}
+
+	writeJSON(w, http.StatusOK, map[string]string{"status": "logged_in"})
+}
+
+func (h *Handler) openaiUsage(w http.ResponseWriter, r *http.Request) {
+	info, err := h.openaiProvider.FetchUsageInfo(r.Context())
+	if err != nil {
+		if errors.Is(err, provider.ErrUnauthorized) {
+			writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "relogin_required"})
+			return
+		}
+		slog.Error("fetch openai usage", "error", err)
+		writeError(w, http.StatusInternalServerError, "failed to fetch usage")
+		return
+	}
+
+	// Update the cache immediately
+	if h.repo != nil {
+		_ = h.repo.UpsertProviderUsage(r.Context(), repository.UpsertProviderUsageParams{
+			ProviderName:        h.openaiProvider.Name(),
+			CurrentUsageSeconds: info.CurrentUsageSeconds,
+			TotalLimitSeconds:   info.TotalLimitSeconds,
+			IsBlocked:           info.IsBlocked,
+		})
+	}
 
 	writeJSON(w, http.StatusOK, info)
 }
