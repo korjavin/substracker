@@ -78,7 +78,7 @@ function renderSubs() {
     return;
   }
 
-  const rows = subs.map(s => {
+  const items = subs.map(s => {
     const nextDate = nextResetDate(s.billing_day);
     const days = daysUntil(nextDate);
     let resetCell;
@@ -90,21 +90,35 @@ function renderSubs() {
       resetCell = `<span style="color:var(--text-dim)">${formatDate(nextDate)} (${days}d)</span>`;
     }
 
-    return `<tr>
-      <td><strong>${esc(s.name)}</strong>${s.notes ? `<br><small style="color:var(--text-dim)">${esc(s.notes)}</small>` : ''}</td>
+    const rowHtml = `<tr onclick="openDetail(${s.id})" style="cursor:pointer">
+      <td><strong>${esc(s.name)}</strong></td>
       <td>${serviceBadge(s.service)}</td>
       <td style="color:var(--text-dim)">Day ${s.billing_day}</td>
       <td>${resetCell}</td>
-      <td>
-        <button class="btn btn-secondary btn-sm" onclick="openEdit(${s.id})">Edit</button>
-        <button class="btn btn-danger btn-sm" style="margin-left:4px" onclick="deleteSub(${s.id})">Delete</button>
-      </td>
     </tr>`;
-  }).join('');
 
-  el.innerHTML = `<table>
+    const cardHtml = `<div class="sub-card" onclick="openDetail(${s.id})" style="cursor:pointer">
+      <div class="sub-card-header">
+        <div>
+          <div class="sub-card-title">${esc(s.name)}</div>
+        </div>
+        ${serviceBadge(s.service)}
+      </div>
+      <div class="sub-card-details">
+        <div>Reset Day: ${s.billing_day}</div>
+        <div>Next Reset: ${resetCell}</div>
+      </div>
+    </div>`;
+
+    return { rowHtml, cardHtml };
+  });
+
+  const rows = items.map(i => i.rowHtml).join('');
+  const cards = items.map(i => i.cardHtml).join('');
+
+  el.innerHTML = `${cards}<table>
     <thead><tr>
-      <th>Name</th><th>Service</th><th>Reset Day</th><th>Next Reset</th><th>Actions</th>
+      <th>Name</th><th>Service</th><th>Reset Day</th><th>Next Reset</th>
     </tr></thead>
     <tbody>${rows}</tbody>
   </table>`;
@@ -127,6 +141,59 @@ async function deleteSub(id) {
     alert('Error: ' + e.message);
   }
 }
+
+// ---- Detail Panel ----
+const detailPanel = document.getElementById('detail-panel');
+const detailBackdrop = document.getElementById('detail-backdrop');
+let currentDetailId = null;
+
+function openDetail(id) {
+  const sub = subs.find(s => s.id === id);
+  if (!sub) return;
+  currentDetailId = id;
+
+  document.getElementById('detail-title').textContent = sub.name;
+  document.getElementById('detail-service').innerHTML = serviceBadge(sub.service);
+  document.getElementById('detail-day').textContent = sub.billing_day;
+
+  const createdDate = new Date(sub.created_at || Date.now());
+  document.getElementById('detail-created').textContent = createdDate.toLocaleString();
+
+  const notesContainer = document.getElementById('detail-notes-container');
+  const notesEl = document.getElementById('detail-notes');
+  if (sub.notes) {
+    notesEl.textContent = sub.notes;
+    notesContainer.style.display = 'block';
+  } else {
+    notesContainer.style.display = 'none';
+  }
+
+  detailBackdrop.style.display = 'block';
+  setTimeout(() => detailPanel.classList.add('open'), 10);
+}
+
+function closeDetail() {
+  detailPanel.classList.remove('open');
+  setTimeout(() => {
+    detailBackdrop.style.display = 'none';
+    currentDetailId = null;
+  }, 200);
+}
+
+document.getElementById('detail-close').addEventListener('click', closeDetail);
+detailBackdrop.addEventListener('click', closeDetail);
+
+document.getElementById('detail-edit-btn').addEventListener('click', () => {
+  if (currentDetailId) openEdit(currentDetailId);
+});
+
+document.getElementById('detail-delete-btn').addEventListener('click', () => {
+  if (currentDetailId) {
+    deleteSub(currentDetailId).then(() => {
+      closeDetail();
+    });
+  }
+});
 
 // ---- Modal ----
 const backdrop = document.getElementById('modal-backdrop');
@@ -176,6 +243,9 @@ form.addEventListener('submit', async e => {
     }
     closeModal();
     await loadSubs();
+    if (currentDetailId) {
+      openDetail(currentDetailId);
+    }
   } catch (e) {
     alert('Error: ' + e.message);
   } finally {
