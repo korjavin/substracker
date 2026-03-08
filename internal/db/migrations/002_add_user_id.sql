@@ -3,10 +3,8 @@ ALTER TABLE subscriptions ADD COLUMN user_id INTEGER NOT NULL DEFAULT 0;
 ALTER TABLE webpush_subscriptions ADD COLUMN user_id INTEGER NOT NULL DEFAULT 0;
 ALTER TABLE telegram_chats ADD COLUMN user_id INTEGER NOT NULL DEFAULT 0;
 
--- Backfill legacy data using the only (or first) existing telegram chat_id
--- We assume `chat_id` stores a numeric value equivalent to a user's ID
-UPDATE subscriptions SET user_id = (SELECT CAST(chat_id AS INTEGER) FROM telegram_chats ORDER BY id LIMIT 1) WHERE user_id = 0 AND (SELECT COUNT(*) FROM telegram_chats) > 0;
-UPDATE webpush_subscriptions SET user_id = (SELECT CAST(chat_id AS INTEGER) FROM telegram_chats ORDER BY id LIMIT 1) WHERE user_id = 0 AND (SELECT COUNT(*) FROM telegram_chats) > 0;
+-- Legacy subscriptions and webpush_subscriptions are left with user_id = 0.
+-- We can backfill telegram_chats safely because chat_id is inherently the user's ID in personal chats.
 UPDATE telegram_chats SET user_id = CAST(chat_id AS INTEGER) WHERE user_id = 0;
 
 CREATE INDEX idx_subscriptions_user_id ON subscriptions(user_id);
