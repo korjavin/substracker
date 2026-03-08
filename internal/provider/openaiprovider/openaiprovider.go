@@ -1,3 +1,9 @@
+// API Endpoint Documented for chatgpt.com usage scraping (Task 1)
+// Endpoint URL: https://chatgpt.com/backend-api/wham/usage
+// HTTP Method: GET
+// Required Headers: Accept: application/json, Authorization: Bearer <token>, Cookie: __Secure-next-auth.session-token=<token>
+// Response JSON Schema includes plan_type, rate_limit (primary_window and secondary_window objects)
+// fields: used_percent (Double), limit_window_seconds (Double), reset_after_seconds (Double), reset_at (TimeInterval)
 package openaiprovider
 
 import (
@@ -21,7 +27,7 @@ type OpenAIProvider struct {
 // NewOpenAIProvider creates a new instance of OpenAIProvider.
 func NewOpenAIProvider() *OpenAIProvider {
 	return &OpenAIProvider{
-		baseURL: "https://api.openai.com",
+		baseURL: "https://chatgpt.com",
 		httpClient: &http.Client{
 			Timeout: 10 * time.Second,
 		},
@@ -33,18 +39,25 @@ func (p *OpenAIProvider) Name() string {
 	return "OpenAI"
 }
 
-type subscriptionPlan struct {
-	ID string `json:"id"`
+type rateLimitWindow struct {
+	UsedPercent        *float64 `json:"used_percent"`
+	LimitWindowSeconds *float64 `json:"limit_window_seconds"`
+	ResetAfterSeconds  *float64 `json:"reset_after_seconds"`
+	ResetAt            *float64 `json:"reset_at"`
 }
 
-type billingSubscription struct {
-	Object         string           `json:"object"`
-	HasPaymentInfo bool             `json:"has_payment_method"`
-	Plan           subscriptionPlan `json:"plan"`
-	AccessUntil    int64            `json:"access_until"` // Timestamp
+type rateLimit struct {
+	PrimaryWindow   *rateLimitWindow `json:"primary_window"`
+	SecondaryWindow *rateLimitWindow `json:"secondary_window"`
 }
 
-// FetchUsageInfo retrieves the current usage information from OpenAI.
+type codexUsageResponse struct {
+	PlanType  *string    `json:"plan_type"`
+	RateLimit *rateLimit `json:"rate_limit"`
+	Detail    *string    `json:"detail"` // Used for error messages like "Unauthorized"
+}
+
+// FetchUsageInfo retrieves the current usage information from OpenAI/chatgpt.com.
 func (p *OpenAIProvider) FetchUsageInfo(ctx context.Context, credentials map[string]string) (*provider.UsageInfo, error) {
 	sessionToken := credentials["session_token"]
 	if sessionToken == "" {
@@ -56,20 +69,21 @@ func (p *OpenAIProvider) FetchUsageInfo(ctx context.Context, credentials map[str
 	baseURL := p.baseURL
 	p.mu.RUnlock()
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, baseURL+"/dashboard/billing/subscription", nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, baseURL+"/backend-api/wham/usage", nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
 
-	// Authenticate using the session cookie
+	// Authenticate using the session cookie and bearer token
 	cookieString := fmt.Sprintf("__Secure-next-auth.session-token=%s", sessionToken)
 	req.Header.Set("Cookie", cookieString)
+	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", sessionToken))
 	req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64)")
 	req.Header.Set("Accept", "application/json")
 
 	resp, err := httpClient.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("failed to fetch billing subscription: %w", err)
+		return nil, fmt.Errorf("failed to fetch usage: %w", err)
 	}
 	defer resp.Body.Close()
 
@@ -78,27 +92,53 @@ func (p *OpenAIProvider) FetchUsageInfo(ctx context.Context, credentials map[str
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("unexpected status fetching subscription: %d", resp.StatusCode)
+		return nil, fmt.Errorf("unexpected status fetching usage: %d", resp.StatusCode)
 	}
 
-	var sub billingSubscription
-	if err := json.NewDecoder(resp.Body).Decode(&sub); err != nil {
-		return nil, fmt.Errorf("failed to decode subscription: %w", err)
+	var usage codexUsageResponse
+	if err := json.NewDecoder(resp.Body).Decode(&usage); err != nil {
+		return nil, fmt.Errorf("failed to decode usage: %w", err)
+	}
+
+	if usage.Detail != nil && *usage.Detail == "Unauthorized" {
+		return nil, fmt.Errorf("openaiprovider: %w", provider.ErrUnauthorized)
 	}
 
 	var resetDate time.Time
+	var currentUsageSeconds int64
+	var totalLimitSeconds int64
+	var isBlocked bool
 
-	if sub.AccessUntil > 0 {
-		resetDate = time.Unix(sub.AccessUntil, 0)
+	if usage.RateLimit != nil && usage.RateLimit.PrimaryWindow != nil {
+		window := usage.RateLimit.PrimaryWindow
+
+		if window.ResetAt != nil {
+			resetDate = time.Unix(int64(*window.ResetAt), 0)
+		} else if window.ResetAfterSeconds != nil {
+			resetDate = time.Now().Add(time.Duration(*window.ResetAfterSeconds) * time.Second)
+		}
+
+		if window.LimitWindowSeconds != nil {
+			totalLimitSeconds = int64(*window.LimitWindowSeconds)
+		}
+
+		if window.UsedPercent != nil && totalLimitSeconds > 0 {
+			currentUsageSeconds = int64(*window.UsedPercent * float64(totalLimitSeconds))
+			if *window.UsedPercent >= 1.0 {
+				isBlocked = true
+			}
+		}
 	} else {
-		// If access_until is not present or 0, fallback to end of the current month
+		// Fallback to end of the current month if no reset date is provided
 		now := time.Now()
-		// Get last day of current month
 		nextMonth := time.Date(now.Year(), now.Month()+1, 1, 0, 0, 0, 0, time.UTC)
 		resetDate = nextMonth.Add(-24 * time.Hour)
 	}
 
 	return &provider.UsageInfo{
-		ResetDate: resetDate,
+		ResetDate:           resetDate,
+		CurrentUsageSeconds: currentUsageSeconds,
+		TotalLimitSeconds:   totalLimitSeconds,
+		IsBlocked:           isBlocked,
 	}, nil
 }
