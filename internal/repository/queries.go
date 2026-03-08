@@ -187,6 +187,37 @@ func (q *Queries) GetProviderUsage(ctx context.Context, providerName string) (Pr
 	return u, nil
 }
 
+// --- Provider Credentials ---
+
+func (q *Queries) UpsertProviderCredential(ctx context.Context, arg UpsertProviderCredentialParams) error {
+	_, err := q.db.ExecContext(ctx,
+		`INSERT INTO provider_credentials (provider_name, credential_key, credential_value, updated_at)
+		 VALUES (?, ?, ?, CURRENT_TIMESTAMP)
+		 ON CONFLICT(provider_name, credential_key) DO UPDATE SET
+			credential_value=excluded.credential_value,
+			updated_at=CURRENT_TIMESTAMP`,
+		arg.ProviderName, arg.CredentialKey, arg.CredentialValue,
+	)
+	return err
+}
+
+func (q *Queries) GetProviderCredential(ctx context.Context, providerName string, credentialKey string) (ProviderCredential, error) {
+	row := q.db.QueryRowContext(ctx,
+		`SELECT provider_name, credential_key, credential_value, updated_at
+		 FROM provider_credentials
+		 WHERE provider_name = ? AND credential_key = ? LIMIT 1`,
+		providerName, credentialKey,
+	)
+	var c ProviderCredential
+	var updatedAt string
+	err := row.Scan(&c.ProviderName, &c.CredentialKey, &c.CredentialValue, &updatedAt)
+	if err != nil {
+		return c, err
+	}
+	c.UpdatedAt = parseTime(updatedAt)
+	return c, nil
+}
+
 // --- Notification Log ---
 
 func (q *Queries) CreateNotificationLog(ctx context.Context, arg CreateNotificationLogParams) error {

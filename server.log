@@ -1,0 +1,19 @@
+Starting SubsTracker on :8080 ...
+{"time":"2026-03-08T11:27:13.73841411Z","level":"INFO","msg":"OK   001_init.sql (7.31ms)"}
+{"time":"2026-03-08T11:27:13.743036696Z","level":"INFO","msg":"OK   002_usage_cache.sql (4.49ms)"}
+{"time":"2026-03-08T11:27:13.7468729Z","level":"INFO","msg":"OK   003_provider_credentials.sql (3.8ms)"}
+{"time":"2026-03-08T11:27:13.74688639Z","level":"INFO","msg":"goose: successfully migrated database to version: 3"}
+{"time":"2026-03-08T11:27:13.74725548Z","level":"INFO","msg":"server starting","port":"8080"}
+{"time":"2026-03-08T11:27:13.747307383Z","level":"INFO","msg":"scheduler started","poll_interval":900000000000}
+{"time":"2026-03-08T11:27:18.135516904Z","level":"INFO","msg":"request","method":"GET","path":"/","status":200,"duration":"9.784338ms","remote":"[::1]:56660"}
+{"time":"2026-03-08T11:27:18.151155014Z","level":"INFO","msg":"request","method":"GET","path":"/css/style.css","status":200,"duration":"6.636305ms","remote":"[::1]:56660"}
+{"time":"2026-03-08T11:27:18.153966405Z","level":"INFO","msg":"request","method":"GET","path":"/js/app.js","status":200,"duration":"775.963µs","remote":"[::1]:56668"}
+{"time":"2026-03-08T11:27:18.19937138Z","level":"INFO","msg":"request","method":"GET","path":"/api/subscriptions","status":200,"duration":"744.869µs","remote":"[::1]:56668"}
+{"time":"2026-03-08T11:27:18.19975127Z","level":"INFO","msg":"request","method":"GET","path":"/api/providers/usage/cached","status":404,"duration":"728.689µs","remote":"[::1]:56660"}
+{"time":"2026-03-08T11:27:18.209817115Z","level":"INFO","msg":"request","method":"GET","path":"/api/providers/usage/cached","status":404,"duration":"238.418µs","remote":"[::1]:56668"}
+{"time":"2026-03-08T11:27:20.349617396Z","level":"INFO","msg":"request","method":"GET","path":"/api/providers/claude/usage","status":401,"duration":"45.68µs","remote":"[::1]:56668"}
+{"time":"2026-03-08T11:27:20.352752849Z","level":"INFO","msg":"request","method":"GET","path":"/api/providers/googleone/usage","status":401,"duration":"25.991µs","remote":"[::1]:56668"}
+{"time":"2026-03-08T11:27:23.200246291Z","level":"INFO","msg":"request","method":"POST","path":"/api/providers/googleone/login","status":200,"duration":"97.211µs","remote":"[::1]:56668"}
+{"time":"2026-03-08T11:27:23.208594488Z","level":"INFO","msg":"request","method":"GET","path":"/api/providers/claude/usage","status":401,"duration":"29.876µs","remote":"[::1]:56668"}
+{"time":"2026-03-08T11:27:23.295034852Z","level":"ERROR","msg":"fetch google one usage","error":"unexpected status fetching subscriptions: 404"}
+{"time":"2026-03-08T11:27:23.295101877Z","level":"INFO","msg":"request","method":"GET","path":"/api/providers/googleone/usage","status":500,"duration":"84.438067ms","remote":"[::1]:56668"}

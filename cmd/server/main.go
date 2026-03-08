@@ -72,9 +72,29 @@ func main() {
 		}
 	}
 
+	// Load saved provider credentials
+	if cred, err := repo.GetProviderCredential(ctx, "Claude", "session_key"); err == nil {
+		if err := handler.GetClaudeProvider().Login(ctx, map[string]string{"session_key": cred.CredentialValue}); err != nil {
+			slog.Error("failed to login claude provider with saved credentials", "error", err)
+		} else {
+			slog.Info("loaded claude provider credentials from db")
+		}
+	}
+
+	if cred, err := repo.GetProviderCredential(ctx, "Google One", "session_cookie"); err == nil {
+		if err := handler.GetGoogleOneProvider().Login(ctx, map[string]string{"session_cookie": cred.CredentialValue}); err != nil {
+			slog.Error("failed to login google one provider with saved credentials", "error", err)
+		} else {
+			slog.Info("loaded google one provider credentials from db")
+		}
+	}
+
 	// For usage polling we need access to the providers. We can expose the claude provider from handler or instantiate it separately.
 	// Since api.Handler instantiates it, let's expose it or pass a list of providers to the scheduler.
-	providers := []provider.Provider{handler.GetClaudeProvider()}
+	providers := []provider.Provider{
+		handler.GetClaudeProvider(),
+		handler.GetGoogleOneProvider(),
+	}
 	scheduler := service.NewScheduler(repo, notifSvc, logger, providers, pollInterval)
 	go scheduler.Run(ctx)
 
