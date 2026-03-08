@@ -143,6 +143,26 @@
   </div>
 </div>
 
+<!-- ===== Google One Login Modal ===== -->
+<div class="modal-backdrop" id="googleone-modal-backdrop">
+  <div class="modal">
+    <h2 id="googleone-modal-title">Google One Login</h2>
+    <p style="font-size:14px;color:var(--text-dim);margin-bottom:16px;">
+      Log in to one.google.com, open Developer Tools -> Application -> Cookies, and copy the value of the 'SID' cookie, or paste a full cookie string containing SID, SSID, and HSID.
+    </p>
+    <form id="googleone-form">
+      <div class="form-group">
+        <label for="googleone-session-cookie">Session Cookie</label>
+        <input type="text" id="googleone-session-cookie" placeholder="e.g. SID=..." required />
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" id="googleone-modal-cancel">Cancel</button>
+        <button type="submit" class="btn btn-primary" id="googleone-modal-save">Save</button>
+      </div>
+    </form>
+  </div>
+</div>
+
 <!-- ===== Subscription Modal ===== -->
 <div class="modal-backdrop" id="modal-backdrop">
   <div class="modal">

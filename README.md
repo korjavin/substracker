@@ -39,6 +39,9 @@ Open http://localhost:5454
 npx web-push generate-vapid-keys
 ```
 
+## Google One Login
+If you are tracking Google One storage, you need to provide your session cookie. In the web interface, click the Settings gear icon in the Google One usage block, and enter your `SID` cookie value (or a full cookie string containing `SID`, `HSID`, and `SSID`). You can find this by opening Developer Tools -> Application -> Cookies on `one.google.com`.
+
 ## Telegram Setup
 
 1. Create a bot via [@BotFather](https://t.me/BotFather) — get a bot token

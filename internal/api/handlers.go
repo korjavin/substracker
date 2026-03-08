@@ -39,6 +39,11 @@ func (h *Handler) GetClaudeProvider() provider.Provider {
 	return h.claudeProvider
 }
 
+// GetGoogleOneProvider returns the Google One provider instance.
+func (h *Handler) GetGoogleOneProvider() provider.Provider {
+	return h.googleOneProvider
+}
+
 func (h *Handler) Register(mux *http.ServeMux) {
 	mux.HandleFunc("GET /health", h.health)
 
@@ -121,10 +126,12 @@ func (h *Handler) claudeLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := h.repo.UpsertProviderCredential(r.Context(), h.claudeProvider.Name(), "session_key", req.SessionKey); err != nil {
-		slog.Error("failed to save claude credential", "error", err)
-		writeError(w, http.StatusInternalServerError, "failed to save credentials")
-		return
+	if h.repo != nil {
+		if err := h.repo.UpsertProviderCredential(r.Context(), h.claudeProvider.Name(), "session_key", req.SessionKey); err != nil {
+			slog.Error("failed to save claude credential", "error", err)
+			writeError(w, http.StatusInternalServerError, "failed to save credentials")
+			return
+		}
 	}
 
 	writeJSON(w, http.StatusOK, map[string]string{"status": "logged_in"})
@@ -149,7 +156,6 @@ func (h *Handler) claudeUsage(w http.ResponseWriter, r *http.Request) {
 		TotalLimitSeconds:   info.TotalLimitSeconds,
 		IsBlocked:           info.IsBlocked,
 	})
-
 	writeJSON(w, http.StatusOK, info)
 }
 
@@ -177,6 +183,14 @@ func (h *Handler) googleOneLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if h.repo != nil {
+		if err := h.repo.UpsertProviderCredential(r.Context(), h.googleOneProvider.Name(), "session_cookie", req.SessionCookie); err != nil {
+			slog.Error("failed to persist google one credentials", "error", err)
+			writeError(w, http.StatusInternalServerError, "failed to save credentials")
+			return
+		}
+	}
+
 	writeJSON(w, http.StatusOK, map[string]string{"status": "logged_in"})
 }
 
@@ -192,11 +206,28 @@ func (h *Handler) googleOneUsage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Update the cache immediately
+	if h.repo != nil {
+		_ = h.repo.UpsertProviderUsage(r.Context(), repository.UpsertProviderUsageParams{
+			ProviderName:        h.googleOneProvider.Name(),
+			CurrentUsageSeconds: info.CurrentUsageSeconds,
+			TotalLimitSeconds:   info.TotalLimitSeconds,
+			IsBlocked:           info.IsBlocked,
+		})
+	}
+
 	writeJSON(w, http.StatusOK, info)
 }
 
 func (h *Handler) cachedUsage(w http.ResponseWriter, r *http.Request) {
-	usage, err := h.repo.GetProviderUsage(r.Context(), h.claudeProvider.Name())
+	// The client might want all providers' cached usage, but currently the frontend expects a single object for Claude.
+	// We'll update this to return a list of all usages.
+	providerName := r.URL.Query().Get("provider")
+	if providerName == "" {
+		providerName = h.claudeProvider.Name() // fallback for old requests
+	}
+
+	usage, err := h.repo.GetProviderUsage(r.Context(), providerName)
 	if err == sql.ErrNoRows {
 		writeJSON(w, http.StatusNotFound, map[string]string{"error": "no_cached_usage"})
 		return

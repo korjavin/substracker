@@ -62,14 +62,6 @@ func main() {
 	handler := api.NewHandler(repo, notifSvc, notifCfg.VAPIDPublicKey)
 	handler.Register(mux)
 
-	// Load Claude credentials on startup
-	if sessionKey, err := repo.GetProviderCredential(ctx, handler.GetClaudeProvider().Name(), "session_key"); err == nil && sessionKey != "" {
-		slog.Info("loading saved claude credentials")
-		if err := handler.GetClaudeProvider().Login(ctx, map[string]string{"session_key": sessionKey}); err != nil {
-			slog.Error("failed to login claude provider with saved credentials", "error", err)
-		}
-	}
-
 	pollIntervalStr := os.Getenv("QUOTA_POLL_INTERVAL")
 	pollInterval := 15 * time.Minute
 	if pollIntervalStr != "" {
@@ -80,9 +72,29 @@ func main() {
 		}
 	}
 
+	// Load saved provider credentials
+	if sessionKey, err := repo.GetProviderCredential(ctx, handler.GetClaudeProvider().Name(), "session_key"); err == nil && sessionKey != "" {
+		if err := handler.GetClaudeProvider().Login(ctx, map[string]string{"session_key": sessionKey}); err != nil {
+			slog.Error("failed to login claude provider with saved credentials", "error", err)
+		} else {
+			slog.Info("loaded claude provider credentials from db")
+		}
+	}
+
+	if sessionCookie, err := repo.GetProviderCredential(ctx, handler.GetGoogleOneProvider().Name(), "session_cookie"); err == nil && sessionCookie != "" {
+		if err := handler.GetGoogleOneProvider().Login(ctx, map[string]string{"session_cookie": sessionCookie}); err != nil {
+			slog.Error("failed to login google one provider with saved credentials", "error", err)
+		} else {
+			slog.Info("loaded google one provider credentials from db")
+		}
+	}
+
 	// For usage polling we need access to the providers. We can expose the claude provider from handler or instantiate it separately.
 	// Since api.Handler instantiates it, let's expose it or pass a list of providers to the scheduler.
-	providers := []provider.Provider{handler.GetClaudeProvider()}
+	providers := []provider.Provider{
+		handler.GetClaudeProvider(),
+		handler.GetGoogleOneProvider(),
+	}
 	scheduler := service.NewScheduler(repo, notifSvc, logger, providers, pollInterval)
 	go scheduler.Run(ctx)
 

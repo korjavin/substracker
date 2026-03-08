@@ -60,14 +60,29 @@ function serviceBadge(service) {
 async function loadUsage() {
   const el = document.getElementById('usage-content');
   try {
-    const data = await api('GET', '/api/providers/usage/cached');
-    renderUsage(data);
-  } catch (e) {
-    if (e.message.includes('no_cached_usage')) {
-      el.innerHTML = `<p style="font-size:13px;color:var(--text-dim)">No usage data yet. Click Refresh to fetch.</p>`;
-    } else {
-      el.innerHTML = `<p style="font-size:13px;color:var(--red)">${e.message}</p>`;
+    const promises = [
+      api('GET', '/api/providers/usage/cached?provider=Claude'),
+      api('GET', '/api/providers/usage/cached?provider=Google+One')
+    ];
+    const results = await Promise.allSettled(promises);
+
+    let hasData = false;
+
+    // Clear content before rendering successes
+    el.innerHTML = '';
+
+    for (const res of results) {
+      if (res.status === 'fulfilled' && res.value) {
+        hasData = true;
+        renderUsage(res.value);
+      }
     }
+
+    if (!hasData) {
+      el.innerHTML = `<p style="font-size:13px;color:var(--text-dim)">No usage data yet. Click Refresh to fetch.</p>`;
+    }
+  } catch (e) {
+    el.innerHTML = `<p style="font-size:13px;color:var(--red)">${e.message}</p>`;
   }
 }
 
@@ -75,10 +90,53 @@ async function refreshUsage() {
   const btn = document.getElementById('refresh-usage-btn');
   const el = document.getElementById('usage-content');
   btn.disabled = true;
-  el.innerHTML = `<p style="font-size:13px;color:var(--text-dim)">Fetching from provider...</p>`;
+  el.innerHTML = `<p style="font-size:13px;color:var(--text-dim)">Fetching from providers...</p>`;
+
+  let claudeRes = null;
+  let googleRes = null;
+
   try {
-    const data = await api('GET', '/api/providers/claude/usage');
+    claudeRes = await api('GET', '/api/providers/claude/usage');
+  } catch (e) {
+    claudeRes = { error: e.message, provider_name: 'Claude' };
+  }
+
+  try {
+    googleRes = await api('GET', '/api/providers/googleone/usage');
+  } catch (e) {
+    googleRes = { error: e.message, provider_name: 'Google One' };
+  }
+
+  el.innerHTML = '';
+  renderFetchResult(claudeRes, 'Claude');
+  renderFetchResult(googleRes, 'Google One');
+
+  btn.disabled = false;
+}
+
+function renderFetchResult(res, name) {
+  if (res.error) {
+    const el = document.getElementById('usage-content');
+    const isLogin = res.error.includes('relogin_required');
+    const msg = isLogin ? `<span style="color:var(--yellow)">Login required.</span>` : `<span style="color:var(--red)">Error: ${res.error}</span>`;
+
+    let settingsLink = '';
+    if (name === 'Claude') {
+      settingsLink = `<a href="#" onclick="openSettingsModal(); return false;" style="float:right; color:var(--text-dim); font-size:12px;">⚙️ Settings</a>`;
+    }
+    if (name === 'Google One') {
+      settingsLink = `<a href="#" onclick="openGoogleOneModal(); return false;" style="float:right; color:var(--text-dim); font-size:12px;">⚙️ Settings</a>`;
+    }
+
+    el.innerHTML += `
+      <div style="margin-bottom: 12px; padding-bottom: 12px; border-bottom: 1px solid var(--border);">
+        <div style="font-size:14px; font-weight: 500; margin-bottom:4px;">${name} ${settingsLink}</div>
+        <p style="font-size:13px; clear:both;">${msg}</p>
+      </div>
+    `;
+  } else {
     renderUsage({
+<<<<<<< Updated upstream
       provider_name: 'Claude',
       current_usage_seconds: data.CurrentUsageSeconds || 0,
       total_limit_seconds: data.TotalLimitSeconds || 0,
@@ -97,6 +155,17 @@ async function refreshUsage() {
     }
   } finally {
     btn.disabled = false;
+      provider_name: name,
+      current_usage_seconds: res.CurrentUsageSeconds || 0,
+      total_limit_seconds: res.TotalLimitSeconds || 0,
+      is_blocked: res.IsBlocked || false,
+      fetched_at: new Date().toISOString(),
+      session_usage_pct: res.session_usage_pct,
+      session_resets_at: res.session_resets_at,
+      weekly_usage_pct: res.weekly_usage_pct,
+      weekly_resets_at: res.weekly_resets_at
+    });
+>>>>>>> Stashed changes
   }
 }
 
@@ -185,16 +254,28 @@ function renderUsage(u) {
       ? `<span style="color:var(--red);font-weight:600">BLOCKED</span> (Limit exceeded)`
       : `<span style="color:var(--green);font-weight:600">ACTIVE</span>`;
 
+  let settingsLink = '';
+  if (u.provider_name === 'Google One') {
+      settingsLink = `<a href="#" onclick="openGoogleOneModal(); return false;" style="float:right; color:var(--text-dim); font-size:12px;">⚙️ Settings</a>`;
+  }
+
     const d = new Date(u.fetched_at);
-    el.innerHTML = `
+  el.innerHTML += `
+    <div style="margin-bottom: 12px; padding-bottom: 12px; border-bottom: 1px solid var(--border);">
       <div style="font-size:14px; margin-bottom:8px;">
-        <strong>${esc(u.provider_name)} Status:</strong> ${statusText}
+        <strong>${esc(u.provider_name)} Status:</strong> ${statusText} ${settingsLink}
       </div>
       <div class="usage-details">
         <span>Last checked: ${d.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
       </div>
+      </div>
     `;
     return;
+  }
+
+  let settingsLink = '';
+  if (u.provider_name === 'Google One') {
+      settingsLink = `<a href="#" onclick="openGoogleOneModal(); return false;" style="float:right; color:var(--text-dim); font-size:12px;">⚙️ Settings</a>`;
   }
 
   const isDanger = percent > 90 || u.is_blocked;
@@ -206,16 +287,18 @@ function renderUsage(u) {
 
   const d = new Date(u.fetched_at);
 
-  el.innerHTML = `
-    <div style="font-size:14px; font-weight: 500;">
-      ${esc(u.provider_name)} ${blockedBadge}
-    </div>
-    <div class="usage-bar-container">
-      <div class="${barClass}" style="width: ${percent}%"></div>
-    </div>
-    <div class="usage-details">
-      <span>${currentHours}h / ${totalHours}h used</span>
-      <span>Last checked: ${d.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
+  el.innerHTML += `
+    <div style="margin-bottom: 12px; padding-bottom: 12px; border-bottom: 1px solid var(--border);">
+      <div style="font-size:14px; font-weight: 500;">
+        ${esc(u.provider_name)} ${blockedBadge} ${settingsLink}
+      </div>
+      <div class="usage-bar-container">
+        <div class="${barClass}" style="width: ${percent}%"></div>
+      </div>
+      <div class="usage-details">
+        <span>${currentHours}h / ${totalHours}h used</span>
+        <span>Last checked: ${d.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
+      </div>
     </div>
   `;
 }
@@ -420,6 +503,42 @@ form.addEventListener('submit', async e => {
     saveBtn.disabled = false;
   }
 });
+
+// ---- Google One Modal ----
+const goBackdrop = document.getElementById('googleone-modal-backdrop');
+const goForm = document.getElementById('googleone-form');
+
+document.getElementById('googleone-modal-cancel').addEventListener('click', closeGoogleOneModal);
+goBackdrop.addEventListener('click', e => { if (e.target === goBackdrop) closeGoogleOneModal(); });
+
+function openGoogleOneModal() {
+  goBackdrop.classList.add('open');
+  document.getElementById('googleone-session-cookie').focus();
+}
+
+function closeGoogleOneModal() {
+  goBackdrop.classList.remove('open');
+  goForm.reset();
+}
+
+goForm.addEventListener('submit', async e => {
+  e.preventDefault();
+  const payload = {
+    session_cookie: document.getElementById('googleone-session-cookie').value.trim(),
+  };
+  const saveBtn = document.getElementById('googleone-modal-save');
+  saveBtn.disabled = true;
+  try {
+    await api('POST', '/api/providers/googleone/login', payload);
+    closeGoogleOneModal();
+    await refreshUsage();
+  } catch (err) {
+    alert('Error: ' + err.message);
+  } finally {
+    saveBtn.disabled = false;
+  }
+});
+
 
 // ---- Notifications ----
 let pushSubscription = null;
