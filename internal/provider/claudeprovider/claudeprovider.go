@@ -8,15 +8,14 @@ import (
 	"net/http"
 	"time"
 
+	"sync"
+
 	"github.com/korjavin/substracker/internal/provider"
 )
-
-import "sync"
 
 // ClaudeProvider implements the Provider interface for Claude.
 type ClaudeProvider struct {
 	mu         sync.RWMutex
-	sessionKey string
 	baseURL    string // Can be overridden for testing
 	httpClient *http.Client
 }
@@ -32,19 +31,6 @@ func NewClaudeProvider() *ClaudeProvider {
 // Name returns the name of the provider.
 func (p *ClaudeProvider) Name() string {
 	return "Claude"
-}
-
-// Login authenticates with Claude by storing the session_key.
-func (p *ClaudeProvider) Login(ctx context.Context, credentials map[string]string) error {
-	sessionKey, ok := credentials["session_key"]
-	if !ok || sessionKey == "" {
-		return errors.New("missing or empty session_key")
-	}
-
-	p.mu.Lock()
-	p.sessionKey = sessionKey
-	p.mu.Unlock()
-	return nil
 }
 
 type organization struct {
@@ -69,25 +55,28 @@ type usageLimit struct {
 }
 
 // FetchUsageInfo retrieves the current usage information from Claude.
-func (p *ClaudeProvider) FetchUsageInfo(ctx context.Context) (*provider.UsageInfo, error) {
-	p.mu.RLock()
-	sessionKey := p.sessionKey
-	p.mu.RUnlock()
-
+func (p *ClaudeProvider) FetchUsageInfo(ctx context.Context, credentials map[string]string) (*provider.UsageInfo, error) {
+	sessionKey := credentials["session_key"]
 	if sessionKey == "" {
-		return nil, fmt.Errorf("claudeprovider: %w", provider.ErrUnauthorized)
+		return nil, provider.ErrUnauthorized
 	}
 
+	p.mu.RLock()
+	baseURL := p.baseURL
+	httpClient := p.httpClient
+	p.mu.RUnlock()
+
 	// 1. Fetch organizations
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, p.baseURL+"/organizations", nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, baseURL+"/organizations", nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create organizations request: %w", err)
 	}
 
 	req.Header.Set("Cookie", fmt.Sprintf("sessionKey=%s", sessionKey))
-	req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
+	req.Header.Set("User-Agent", "Mozilla/5.0")
+	req.Header.Set("Accept", "application/json")
 
-	resp, err := p.httpClient.Do(req)
+	resp, err := httpClient.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch organizations: %w", err)
 	}

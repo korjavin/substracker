@@ -22,10 +22,10 @@ type UsageInfo struct {
 
 	// Additional usage percentages and reset dates
 	// Use pointers for floats so 0 is not omitted by omitempty
-	SessionUsagePct *float64   `json:"session_usage_pct,omitempty"`
-	SessionResetsAt time.Time  `json:"session_resets_at,omitempty"`
-	WeeklyUsagePct  *float64   `json:"weekly_usage_pct,omitempty"`
-	WeeklyResetsAt  time.Time  `json:"weekly_resets_at,omitempty"`
+	SessionUsagePct *float64  `json:"session_usage_pct,omitempty"`
+	SessionResetsAt time.Time `json:"session_resets_at,omitempty"`
+	WeeklyUsagePct  *float64  `json:"weekly_usage_pct,omitempty"`
+	WeeklyResetsAt  time.Time `json:"weekly_resets_at,omitempty"`
 }
 
 // Provider defines the interface for different service providers (Claude, OpenAI, Z.ai, etc.).
@@ -33,10 +33,6 @@ type Provider interface {
 	// Name returns the name of the provider.
 	Name() string
 
-	// Login authenticates with the provider using the provided credentials.
-	Login(ctx context.Context, credentials map[string]string) error
-
-	// FetchUsageInfo retrieves the current usage information from the provider.
-	// It should be called after a successful Login.
-	FetchUsageInfo(ctx context.Context) (*UsageInfo, error)
+	// FetchUsageInfo retrieves the current usage information from the provider using provided credentials.
+	FetchUsageInfo(ctx context.Context, credentials map[string]string) (*UsageInfo, error)
 }

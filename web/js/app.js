@@ -64,11 +64,11 @@ async function loadSubs() {
   try {
     const [subsData, usagesData] = await Promise.all([
       api('GET', '/api/subscriptions'),
-      api('GET', '/api/providers/usage/cached').catch(() => []) // Catch error if no usages yet
+      api('GET', '/api/subscriptions/usage/cached').catch(() => []) // Catch error if no usages yet
     ]);
     subs = subsData || [];
     usagesMap = (usagesData || []).reduce((acc, u) => {
-      acc[u.provider_name.toLowerCase().replace(/\s/g, '')] = u;
+      acc[u.subscription_id] = u;
       return acc;
     }, {});
 
@@ -83,7 +83,7 @@ async function loadSubs() {
 
     const statusText = document.getElementById('usage-status-text');
     if (newest > 0) {
-      statusText.textContent = `Last checked: ${new Date(newest).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}`;
+      statusText.textContent = `Last checked: ${new Date(newest).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
       statusText.style.display = 'inline';
       statusText.style.color = 'var(--text-dim)';
     } else {
@@ -103,33 +103,12 @@ document.getElementById('refresh-usage-btn').addEventListener('click', async () 
   btn.disabled = true;
   btn.textContent = 'Refreshing...';
   try {
-    const results = await Promise.allSettled([
-      api('GET', '/api/providers/claude/usage'),
-      api('GET', '/api/providers/googleone/usage'),
-      api('GET', '/api/providers/openai/usage')
-    ]);
-
-    // Check for errors
-    let errorMsg = null;
-    for (const r of results) {
-      if (r.status === 'rejected') {
-        const msg = r.reason.message;
-        if (msg.includes('relogin_required')) {
-          errorMsg = 'Login required for a provider. Check settings.';
-          break; // Prioritize relogin error
-        }
-        errorMsg = msg;
-      }
-    }
-
+    await api('POST', '/api/subscriptions/usage/refresh');
     await loadSubs();
-
-    // overwrite status text if error happened since loadSubs will reset it
-    if (errorMsg) {
-      statusText.textContent = errorMsg;
-      statusText.style.color = 'var(--yellow)';
-      statusText.style.display = 'inline';
-    }
+  } catch (err) {
+    statusText.textContent = err.message || 'Error checking limits';
+    statusText.style.color = 'var(--yellow)';
+    statusText.style.display = 'inline';
   } finally {
     btn.disabled = false;
     btn.textContent = 'Refresh Usage';
@@ -161,7 +140,7 @@ function renderSubs() {
       resetCell = `<span style="color:var(--text-dim)">${formatDate(nextDate)} (${days}d)</span>`;
     }
 
-    const u = usagesMap[s.service.toLowerCase().replace(/\s/g, '')];
+    const u = usagesMap[s.id];
     let statusHtml = '<span style="color:var(--text-dim)">—</span>';
     let usageHtml = '<span style="color:var(--text-dim)">—</span>';
 
@@ -325,54 +304,6 @@ document.getElementById('detail-delete-btn').addEventListener('click', () => {
   }
 });
 
-// ---- OpenAI Modal ----
-const openaiBackdrop = document.getElementById('openai-modal-backdrop');
-const openaiForm = document.getElementById('openai-form');
-
-document.getElementById('openai-settings-btn').addEventListener('click', async () => {
-  openaiBackdrop.classList.add('open');
-  try {
-    const info = await api('GET', '/api/providers/openai/login-info');
-    document.getElementById('openai-modal-instructions').innerHTML = `
-      ${info.instructions}<br><br>
-      <a href="${info.url}" target="_blank" style="color:var(--accent)">Open OpenAI Platform</a>
-    `;
-  } catch (e) {
-    document.getElementById('openai-modal-instructions').textContent = 'Error loading instructions: ' + e.message;
-  }
-});
-
-document.getElementById('openai-modal-cancel').addEventListener('click', () => {
-  openaiBackdrop.classList.remove('open');
-  openaiForm.reset();
-});
-
-openaiBackdrop.addEventListener('click', e => {
-  if (e.target === openaiBackdrop) {
-    openaiBackdrop.classList.remove('open');
-    openaiForm.reset();
-  }
-});
-
-openaiForm.addEventListener('submit', async e => {
-  e.preventDefault();
-  const token = document.getElementById('openai-session-token').value.trim();
-  const saveBtn = document.getElementById('openai-modal-save');
-  saveBtn.disabled = true;
-  saveBtn.textContent = 'Saving...';
-  try {
-    await api('POST', '/api/providers/openai/login', { session_token: token });
-    openaiBackdrop.classList.remove('open');
-    openaiForm.reset();
-    document.getElementById('refresh-usage-btn').click(); // trigger a refresh
-  } catch (err) {
-    alert('Failed to save OpenAI token: ' + err.message);
-  } finally {
-    saveBtn.disabled = false;
-    saveBtn.textContent = 'Save';
-  }
-});
-
 
 // ---- Modal ----
 const backdrop = document.getElementById('modal-backdrop');
@@ -388,6 +319,7 @@ function openModal(sub) {
   document.getElementById('sub-name').value = sub ? sub.name : '';
   document.getElementById('sub-service').value = sub ? sub.service : 'claude';
   document.getElementById('sub-day').value = sub ? sub.billing_day : '';
+  document.getElementById('sub-auth').value = sub ? (sub.auth_token || '') : '';
   document.getElementById('sub-notes').value = sub ? sub.notes : '';
   backdrop.classList.add('open');
   document.getElementById('sub-name').focus();
@@ -410,6 +342,7 @@ form.addEventListener('submit', async e => {
     name: document.getElementById('sub-name').value.trim(),
     service: document.getElementById('sub-service').value,
     billing_day: parseInt(document.getElementById('sub-day').value, 10),
+    auth_token: document.getElementById('sub-auth').value.trim(),
     notes: document.getElementById('sub-notes').value.trim(),
   };
   const saveBtn = document.getElementById('modal-save');

@@ -9,6 +9,7 @@ type Subscription struct {
 	Service    string    `json:"service"`
 	BillingDay int64     `json:"billing_day"`
 	Notes      string    `json:"notes"`
+	AuthToken  string    `json:"auth_token"`
 	CreatedAt  time.Time `json:"created_at"`
 	UpdatedAt  time.Time `json:"updated_at"`
 }
@@ -50,6 +51,7 @@ type CreateSubscriptionParams struct {
 	Service    string
 	BillingDay int64
 	Notes      string
+	AuthToken  string
 }
 
 type UpdateSubscriptionParams struct {
@@ -59,6 +61,7 @@ type UpdateSubscriptionParams struct {
 	Service    string
 	BillingDay int64
 	Notes      string
+	AuthToken  string
 }
 
 type CreateNotificationLogParams struct {
@@ -78,6 +81,21 @@ type ProviderUsage struct {
 
 type UpsertProviderUsageParams struct {
 	ProviderName        string
+	CurrentUsageSeconds int64
+	TotalLimitSeconds   int64
+	IsBlocked           bool
+}
+
+type SubscriptionUsage struct {
+	SubscriptionID      int64     `json:"subscription_id"`
+	CurrentUsageSeconds int64     `json:"current_usage_seconds"`
+	TotalLimitSeconds   int64     `json:"total_limit_seconds"`
+	IsBlocked           bool      `json:"is_blocked"`
+	FetchedAt           time.Time `json:"fetched_at"`
+}
+
+type UpsertSubscriptionUsageParams struct {
+	SubscriptionID      int64
 	CurrentUsageSeconds int64
 	TotalLimitSeconds   int64
 	IsBlocked           bool

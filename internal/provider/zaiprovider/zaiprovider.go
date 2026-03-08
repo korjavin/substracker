@@ -12,10 +12,9 @@ import (
 )
 
 type ZAIProvider struct {
-	mu            sync.RWMutex
-	sessionCookie string
-	baseURL       string
-	client        *http.Client
+	mu      sync.RWMutex
+	baseURL string
+	client  *http.Client
 }
 
 const zaiQuotaLimitPath = "/api/monitor/usage/quota/limit"
@@ -33,19 +32,6 @@ func (p *ZAIProvider) Name() string {
 	return "Z.ai"
 }
 
-func (p *ZAIProvider) Login(ctx context.Context, credentials map[string]string) error {
-	cookie, ok := credentials["session_cookie"]
-	if !ok || cookie == "" {
-		return fmt.Errorf("session_cookie is required")
-	}
-
-	p.mu.Lock()
-	defer p.mu.Unlock()
-	p.sessionCookie = cookie
-
-	return nil
-}
-
 type zaiUsageResponse struct {
 	Success *bool  `json:"success,omitempty"`
 	Msg     string `json:"msg,omitempty"`
@@ -57,9 +43,10 @@ type zaiUsageResponse struct {
 	} `json:"data,omitempty"`
 }
 
-func (p *ZAIProvider) FetchUsageInfo(ctx context.Context) (*provider.UsageInfo, error) {
+func (p *ZAIProvider) FetchUsageInfo(ctx context.Context, credentials map[string]string) (*provider.UsageInfo, error) {
+	cookie := credentials["session_cookie"]
+
 	p.mu.RLock()
-	cookie := p.sessionCookie
 	baseURL := p.baseURL
 	client := p.client
 	p.mu.RUnlock()

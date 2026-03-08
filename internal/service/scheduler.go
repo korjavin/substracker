@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"strings"
 	"time"
 
 	"github.com/korjavin/substracker/internal/provider"
@@ -83,47 +84,90 @@ func (s *Scheduler) runQuotaPoll(ctx context.Context) {
 }
 
 func (s *Scheduler) pollQuota(ctx context.Context) {
-	s.logger.Debug("polling quota for providers")
-	for _, p := range s.providers {
-		info, err := p.FetchUsageInfo(ctx)
+	s.logger.Debug("polling quota for subscriptions")
+
+	subs, err := s.repo.ListAllSubscriptions(ctx)
+	if err != nil {
+		s.logger.Error("scheduler: list all subscriptions", "error", err)
+		return
+	}
+
+	for _, sub := range subs {
+		if sub.AuthToken == "" {
+			continue
+		}
+
+		var p provider.Provider
+		for _, provider := range s.providers {
+			// e.g. "claude" vs "Claude", "googleone" vs "MockGoogleOne"
+			// Wait, the easiest matching is strings.Contains or similar, but
+			// we can map it via Name() mapping based on how main passes them: Claude -> claude, OpenAI -> openai, etc.
+			// Let's just use a simple switch on Name() mapped to service name
+			pName := strings.ToLower(provider.Name())
+			if strings.Contains(pName, sub.Service) || strings.Contains(sub.Service, pName) {
+				p = provider
+				break
+			}
+			// Fallbacks
+			if sub.Service == "googleone" && strings.Contains(pName, "google") {
+				p = provider
+				break
+			}
+			if sub.Service == "zai" && strings.Contains(pName, "zai") {
+				p = provider
+				break
+			}
+		}
+
+		if p == nil {
+			continue
+		}
+
+		creds := map[string]string{
+			"session_key":    sub.AuthToken,
+			"session_token":  sub.AuthToken,
+			"session_cookie": sub.AuthToken,
+		}
+
+		info, err := p.FetchUsageInfo(ctx, creds)
 		if err != nil {
 			if errors.Is(err, provider.ErrUnauthorized) {
-				s.logger.Debug("provider unauthorized, skipping quota poll", "provider", p.Name())
+				s.logger.Debug("provider unauthorized, skipping quota poll for sub", "subID", sub.ID, "provider", p.Name())
 				continue
 			}
-			s.logger.Error("scheduler: fetch usage info", "provider", p.Name(), "error", err)
+			s.logger.Error("scheduler: fetch usage info", "subID", sub.ID, "provider", p.Name(), "error", err)
 			continue
 		}
 
 		// Get last state
-		lastUsage, err := s.repo.GetProviderUsage(ctx, p.Name())
+		lastUsage, err := s.repo.GetSubscriptionUsage(ctx, sub.ID)
 		var wasBlocked bool
 		if err == nil {
 			wasBlocked = lastUsage.IsBlocked
 		} else if err != sql.ErrNoRows {
-			s.logger.Error("scheduler: get provider usage", "error", err)
+			s.logger.Error("scheduler: get subscription usage", "subID", sub.ID, "error", err)
 			// Continue with assuming it wasn't blocked
 		}
 
 		// State transition detection
 		if wasBlocked && !info.IsBlocked {
-			msg := fmt.Sprintf("Your %s quota is unblocked! You can use it again.", p.Name())
-			s.notif.SendAll(ctx, 0, 0, msg)
+			msg := fmt.Sprintf("Your %s quota is unblocked! You can use it again.", sub.Name)
+			s.notif.SendAll(ctx, sub.UserID, sub.ID, msg)
 		} else if !wasBlocked && info.IsBlocked {
 			// Optional: Notify when blocked
-			msg := fmt.Sprintf("Your %s quota has been reached. You will be notified when it unblocks.", p.Name())
-			s.notif.SendAll(ctx, 0, 0, msg)
+			msg := fmt.Sprintf("Your %s quota has been reached. You will be notified when it unblocks.", sub.Name)
+			s.notif.SendAll(ctx, sub.UserID, sub.ID, msg)
 		}
 
-		// Save new state (only after checking transitions)
-		err = s.repo.UpsertProviderUsage(ctx, repository.UpsertProviderUsageParams{
-			ProviderName:        p.Name(),
+		// Save new state
+		err = s.repo.UpsertSubscriptionUsage(ctx, repository.UpsertSubscriptionUsageParams{
+			SubscriptionID:      sub.ID,
 			CurrentUsageSeconds: info.CurrentUsageSeconds,
 			TotalLimitSeconds:   info.TotalLimitSeconds,
 			IsBlocked:           info.IsBlocked,
 		})
 		if err != nil {
-			s.logger.Error("scheduler: upsert provider usage", "error", err)
+			s.logger.Error("scheduler: upsert subscription usage", "subID", sub.ID, "error", err)
 			continue
 		}
 	}

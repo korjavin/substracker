@@ -1,202 +1,170 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>SubsTracker</title>
   <link rel="stylesheet" href="/css/style.css" />
 </head>
+
 <body>
 
-<header>
-  <h1>SubsTracker</h1>
-  <nav>
-    <button class="tab-btn active" data-tab="subscriptions">Subscriptions</button>
-    <button class="tab-btn" data-tab="notifications">Notifications</button>
-    <button class="tab-btn" data-tab="log">Activity Log</button>
-  </nav>
-  <div style="margin-left: auto; display: flex; align-items: center; gap: 10px;">
-    <span id="user-info" style="font-size: 14px; color: var(--text-dim);"></span>
-    <button class="btn btn-secondary btn-sm" id="logout-btn" style="display: none;">Logout</button>
+  <header>
+    <h1>SubsTracker</h1>
+    <nav>
+      <button class="tab-btn active" data-tab="subscriptions">Subscriptions</button>
+      <button class="tab-btn" data-tab="notifications">Notifications</button>
+      <button class="tab-btn" data-tab="log">Activity Log</button>
+    </nav>
+    <div style="margin-left: auto; display: flex; align-items: center; gap: 10px;">
+      <span id="user-info" style="font-size: 14px; color: var(--text-dim);"></span>
+      <button class="btn btn-secondary btn-sm" id="logout-btn" style="display: none;">Logout</button>
+    </div>
+  </header>
+
+  <main>
+
+    <!-- ===== Subscriptions Tab ===== -->
+    <section id="subscriptions" class="tab-content active">
+      <div class="section-header">
+        <h2>Subscriptions</h2>
+        <div style="display:flex;gap:10px;align-items:center;">
+          <span id="usage-status-text" style="font-size:12px;color:var(--text-dim);display:none;"></span>
+          <button class="btn btn-secondary btn-sm" id="refresh-usage-btn">Refresh Usage</button>
+          <button class="btn btn-primary" id="add-sub-btn">+ Add</button>
+        </div>
+      </div>
+
+      <div class="card table-wrap" id="subs-container">
+        <div class="empty">
+          <div>Loading...</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===== Notifications Tab ===== -->
+    <section id="notifications" class="tab-content">
+
+      <div class="card" id="push-card">
+        <h3>Web Push Notifications</h3>
+        <div id="push-status-msg" class="alert alert-info" style="display:none"></div>
+        <p style="font-size:14px;color:var(--text-dim);margin-bottom:14px;">
+          Receive browser push notifications when your subscription limits reset.
+          Requires VAPID keys to be configured on the server.
+        </p>
+        <button class="btn btn-secondary" id="push-btn">Enable Push Notifications</button>
+      </div>
+
+      <div class="card">
+        <h3>Telegram Notifications</h3>
+        <p style="font-size:14px;color:var(--text-dim);margin-bottom:14px;">
+          Add your Telegram chat ID to receive messages when limits reset.<br>
+          Get your chat ID from <a href="https://t.me/userinfobot" target="_blank"
+            style="color:var(--accent)">@userinfobot</a> on Telegram.
+        </p>
+        <div class="notif-row">
+          <input type="text" id="tg-chat-input" placeholder="e.g. 123456789" />
+          <button class="btn btn-primary" id="tg-add-btn">Add</button>
+        </div>
+        <div id="tg-chats-list"></div>
+
+        <div style="margin-top:16px;padding-top:16px;border-top:1px solid var(--border)">
+          <button class="btn btn-secondary btn-sm" id="test-notif-btn">Send Test Notification</button>
+          <span id="test-result" style="font-size:13px;margin-left:10px;color:var(--text-dim)"></span>
+        </div>
+      </div>
+
+    </section>
+
+    <!-- ===== Log Tab ===== -->
+    <section id="log" class="tab-content">
+      <div class="section-header">
+        <h2>Activity Log</h2>
+        <button class="btn btn-secondary btn-sm" id="refresh-log-btn">Refresh</button>
+      </div>
+      <div class="card" id="log-container">
+        <div class="empty">
+          <div>Loading...</div>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- ===== Subscription Detail Panel ===== -->
+  <div class="modal-backdrop" id="detail-backdrop" style="display:none;"></div>
+  <aside id="detail-panel">
+    <div class="detail-header">
+      <h2 id="detail-title">Details</h2>
+      <button class="btn btn-secondary btn-sm" id="detail-close">X</button>
+    </div>
+    <div class="detail-content">
+      <div class="detail-field">
+        <div class="detail-label">Service</div>
+        <div id="detail-service"></div>
+      </div>
+      <div class="detail-field">
+        <div class="detail-label">Billing Reset Day</div>
+        <div id="detail-day"></div>
+      </div>
+      <div class="detail-field">
+        <div class="detail-label">Created At</div>
+        <div id="detail-created" style="color:var(--text-dim);font-size:13px"></div>
+      </div>
+      <div class="detail-field" id="detail-notes-container">
+        <div class="detail-label">Notes</div>
+        <div id="detail-notes" style="white-space:pre-wrap;font-size:14px;"></div>
+      </div>
+    </div>
+    <div class="detail-footer">
+      <button class="btn btn-secondary" id="detail-edit-btn">Edit</button>
+      <button class="btn btn-danger" id="detail-delete-btn">Delete</button>
+    </div>
+  </aside>
+
+
+  <!-- ===== Subscription Modal ===== -->
+  <div class="modal-backdrop" id="modal-backdrop">
+    <div class="modal">
+      <h2 id="modal-title">Add Subscription</h2>
+      <form id="sub-form">
+        <input type="hidden" id="sub-id" />
+        <div class="form-group">
+          <label for="sub-name">Name</label>
+          <input type="text" id="sub-name" placeholder="e.g. Claude Pro" required />
+        </div>
+        <div class="form-group">
+          <label for="sub-service">Service</label>
+          <select id="sub-service" required>
+            <option value="claude">Claude (Anthropic)</option>
+            <option value="googleone">Google One</option>
+            <option value="openai">OpenAI</option>
+            <option value="zai">Z.ai</option>
+            <option value="other">Other</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label for="sub-day">Billing Reset Day (1–31)</label>
+          <input type="number" id="sub-day" min="1" max="31" placeholder="e.g. 15" required />
+        </div>
+        <div class="form-group" id="sub-auth-group">
+          <label for="sub-auth">Auth Token (Optional: Session Cookie / Key)</label>
+          <input type="password" id="sub-auth" placeholder="Used by backend for tracking usage API limits" />
+        </div>
+        <div class="form-group">
+          <label for="sub-notes">Notes (optional)</label>
+          <textarea id="sub-notes" rows="2" placeholder="Plan details, limits, etc."></textarea>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" id="modal-cancel">Cancel</button>
+          <button type="submit" class="btn btn-primary" id="modal-save">Save</button>
+        </div>
+      </form>
+    </div>
   </div>
-</header>
 
-<main>
-
-  <!-- ===== Subscriptions Tab ===== -->
-  <section id="subscriptions" class="tab-content active">
-    <div class="section-header">
-      <h2>Subscriptions</h2>
-      <div style="display:flex;gap:10px;align-items:center;">
-        <span id="usage-status-text" style="font-size:12px;color:var(--text-dim);display:none;"></span>
-        <button class="btn btn-secondary btn-sm" id="openai-settings-btn" title="OpenAI Settings">⚙️ OpenAI</button>
-        <button class="btn btn-secondary btn-sm" id="refresh-usage-btn">Refresh Usage</button>
-        <button class="btn btn-primary" id="add-sub-btn">+ Add</button>
-      </div>
-    </div>
-
-    <div class="card table-wrap" id="subs-container">
-      <div class="empty"><div>Loading...</div></div>
-    </div>
-  </section>
-
-  <!-- ===== Notifications Tab ===== -->
-  <section id="notifications" class="tab-content">
-
-    <div class="card" id="push-card">
-      <h3>Web Push Notifications</h3>
-      <div id="push-status-msg" class="alert alert-info" style="display:none"></div>
-      <p style="font-size:14px;color:var(--text-dim);margin-bottom:14px;">
-        Receive browser push notifications when your subscription limits reset.
-        Requires VAPID keys to be configured on the server.
-      </p>
-      <button class="btn btn-secondary" id="push-btn">Enable Push Notifications</button>
-    </div>
-
-    <div class="card">
-      <h3>Telegram Notifications</h3>
-      <p style="font-size:14px;color:var(--text-dim);margin-bottom:14px;">
-        Add your Telegram chat ID to receive messages when limits reset.<br>
-        Get your chat ID from <a href="https://t.me/userinfobot" target="_blank" style="color:var(--accent)">@userinfobot</a> on Telegram.
-      </p>
-      <div class="notif-row">
-        <input type="text" id="tg-chat-input" placeholder="e.g. 123456789" />
-        <button class="btn btn-primary" id="tg-add-btn">Add</button>
-      </div>
-      <div id="tg-chats-list"></div>
-
-      <div style="margin-top:16px;padding-top:16px;border-top:1px solid var(--border)">
-        <button class="btn btn-secondary btn-sm" id="test-notif-btn">Send Test Notification</button>
-        <span id="test-result" style="font-size:13px;margin-left:10px;color:var(--text-dim)"></span>
-      </div>
-    </div>
-
-  </section>
-
-  <!-- ===== Log Tab ===== -->
-  <section id="log" class="tab-content">
-    <div class="section-header">
-      <h2>Activity Log</h2>
-      <button class="btn btn-secondary btn-sm" id="refresh-log-btn">Refresh</button>
-    </div>
-    <div class="card" id="log-container">
-      <div class="empty"><div>Loading...</div></div>
-    </div>
-  </section>
-
-</main>
-
-<!-- ===== Subscription Detail Panel ===== -->
-<div class="modal-backdrop" id="detail-backdrop" style="display:none;"></div>
-<aside id="detail-panel">
-  <div class="detail-header">
-    <h2 id="detail-title">Details</h2>
-    <button class="btn btn-secondary btn-sm" id="detail-close">X</button>
-  </div>
-  <div class="detail-content">
-    <div class="detail-field">
-      <div class="detail-label">Service</div>
-      <div id="detail-service"></div>
-    </div>
-    <div class="detail-field">
-      <div class="detail-label">Billing Reset Day</div>
-      <div id="detail-day"></div>
-    </div>
-    <div class="detail-field">
-      <div class="detail-label">Created At</div>
-      <div id="detail-created" style="color:var(--text-dim);font-size:13px"></div>
-    </div>
-    <div class="detail-field" id="detail-notes-container">
-      <div class="detail-label">Notes</div>
-      <div id="detail-notes" style="white-space:pre-wrap;font-size:14px;"></div>
-    </div>
-  </div>
-  <div class="detail-footer">
-    <button class="btn btn-secondary" id="detail-edit-btn">Edit</button>
-    <button class="btn btn-danger" id="detail-delete-btn">Delete</button>
-  </div>
-</aside>
-
-<!-- ===== Z.ai Settings Modal ===== -->
-<div class="modal-backdrop" id="zai-settings-backdrop" style="display:none;">
-  <div class="modal">
-    <h2>Z.ai Settings</h2>
-    <p style="font-size:14px;color:var(--text-dim);margin-bottom:15px;">
-      To track Z.ai usage, you need to provide your session cookie.<br><br>
-      1. Go to <a href="https://z.ai/" target="_blank" style="color:var(--accent)">z.ai</a> and log in.<br>
-      2. Open Developer Tools (F12) &gt; Application &gt; Cookies.<br>
-      3. Copy the value of the <strong>session_cookie</strong> cookie.<br>
-      4. Paste it below.
-    </p>
-    <form id="zai-settings-form">
-      <div class="form-group">
-        <label for="zai-session-cookie">Session Cookie</label>
-        <input type="password" id="zai-session-cookie" placeholder="Paste session_cookie value here..." required />
-      </div>
-      <div class="modal-footer" style="margin-top:20px;display:flex;justify-content:flex-end;gap:10px;">
-        <button type="button" class="btn btn-secondary" id="zai-settings-cancel">Cancel</button>
-        <button type="submit" class="btn btn-primary" id="zai-settings-save">Save</button>
-      </div>
-    </form>
-  </div>
-</div>
-
-<!-- ===== OpenAI Settings Modal ===== -->
-<div class="modal-backdrop" id="openai-modal-backdrop">
-  <div class="modal">
-    <h2>OpenAI Settings</h2>
-    <p style="font-size:14px;color:var(--text-dim);margin-bottom:14px;" id="openai-modal-instructions">
-      Loading instructions...
-    </p>
-    <form id="openai-form">
-      <div class="form-group">
-        <label for="openai-session-token">Session Token (__Secure-next-auth.session-token)</label>
-        <input type="text" id="openai-session-token" placeholder="Paste session token here" required />
-      </div>
-      <div class="modal-footer">
-        <button type="button" class="btn btn-secondary" id="openai-modal-cancel">Cancel</button>
-        <button type="submit" class="btn btn-primary" id="openai-modal-save">Save</button>
-      </div>
-    </form>
-  </div>
-</div>
-
-<!-- ===== Subscription Modal ===== -->
-<div class="modal-backdrop" id="modal-backdrop">
-  <div class="modal">
-    <h2 id="modal-title">Add Subscription</h2>
-    <form id="sub-form">
-      <input type="hidden" id="sub-id" />
-      <div class="form-group">
-        <label for="sub-name">Name</label>
-        <input type="text" id="sub-name" placeholder="e.g. Claude Pro" required />
-      </div>
-      <div class="form-group">
-        <label for="sub-service">Service</label>
-        <select id="sub-service" required>
-          <option value="claude">Claude (Anthropic)</option>
-          <option value="googleone">Google One</option>
-          <option value="openai">OpenAI</option>
-          <option value="zai">Z.ai</option>
-          <option value="other">Other</option>
-        </select>
-      </div>
-      <div class="form-group">
-        <label for="sub-day">Billing Reset Day (1–31)</label>
-        <input type="number" id="sub-day" min="1" max="31" placeholder="e.g. 15" required />
-      </div>
-      <div class="form-group">
-        <label for="sub-notes">Notes (optional)</label>
-        <textarea id="sub-notes" rows="2" placeholder="Plan details, limits, etc."></textarea>
-      </div>
-      <div class="modal-footer">
-        <button type="button" class="btn btn-secondary" id="modal-cancel">Cancel</button>
-        <button type="submit" class="btn btn-primary" id="modal-save">Save</button>
-      </div>
-    </form>
-  </div>
-</div>
-
-<script src="/js/app.js"></script>
+  <script src="/js/app.js"></script>
 </body>
+
 </html>

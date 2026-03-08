@@ -15,10 +15,9 @@ import (
 
 // GoogleOneProvider implements the Provider interface for Google One.
 type GoogleOneProvider struct {
-	mu            sync.RWMutex
-	sessionCookie string
-	baseURL       string // Can be overridden for testing
-	httpClient    *http.Client
+	mu         sync.RWMutex
+	baseURL    string // Can be overridden for testing
+	httpClient *http.Client
 }
 
 // NewGoogleOneProvider creates a new instance of GoogleOneProvider.
@@ -36,19 +35,6 @@ func (p *GoogleOneProvider) Name() string {
 	return "Google One"
 }
 
-// Login authenticates with Google One by storing the session_cookie.
-func (p *GoogleOneProvider) Login(ctx context.Context, credentials map[string]string) error {
-	sessionCookie, ok := credentials["session_cookie"]
-	if !ok || sessionCookie == "" {
-		return errors.New("missing or empty session_cookie")
-	}
-
-	p.mu.Lock()
-	p.sessionCookie = sessionCookie
-	p.mu.Unlock()
-	return nil
-}
-
 type billingPeriod struct {
 	EndDate string `json:"end_date"`
 }
@@ -57,17 +43,19 @@ type subscriptionInfo struct {
 	BillingPeriod billingPeriod `json:"billing_period"`
 }
 
-// FetchUsageInfo retrieves the current usage information from Google One.
-func (p *GoogleOneProvider) FetchUsageInfo(ctx context.Context) (*provider.UsageInfo, error) {
-	p.mu.RLock()
-	sessionCookie := p.sessionCookie
-	p.mu.RUnlock()
-
-	if sessionCookie == "" {
+// FetchUsageInfo retrieves Google One storage details.
+func (p *GoogleOneProvider) FetchUsageInfo(ctx context.Context, credentials map[string]string) (*provider.UsageInfo, error) {
+	sessionCookie, ok := credentials["session_cookie"]
+	if !ok || sessionCookie == "" {
 		return nil, fmt.Errorf("googleoneprovider: %w", provider.ErrUnauthorized)
 	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, p.baseURL+"/api/subscriptions", nil)
+	p.mu.RLock()
+	baseURL := p.baseURL
+	client := p.httpClient
+	p.mu.RUnlock()
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, baseURL+"/api/subscriptions", nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
@@ -79,9 +67,10 @@ func (p *GoogleOneProvider) FetchUsageInfo(ctx context.Context) (*provider.Usage
 		cookieString = fmt.Sprintf("SID=%s", sessionCookie)
 	}
 	req.Header.Set("Cookie", cookieString)
-	req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
+	req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
+	req.Header.Set("Accept", "application/json")
 
-	resp, err := p.httpClient.Do(req)
+	resp, err := client.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch subscriptions: %w", err)
 	}

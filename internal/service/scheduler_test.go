@@ -20,8 +20,7 @@ type mockProvider struct {
 }
 
 func (m *mockProvider) Name() string { return m.name }
-func (m *mockProvider) Login(ctx context.Context, creds map[string]string) error { return nil }
-func (m *mockProvider) FetchUsageInfo(ctx context.Context) (*provider.UsageInfo, error) {
+func (m *mockProvider) FetchUsageInfo(ctx context.Context, creds map[string]string) (*provider.UsageInfo, error) {
 	if m.err != nil {
 		return nil, m.err
 	}
@@ -41,9 +40,19 @@ func TestSchedulerPollQuota(t *testing.T) {
 	defer db.Close()
 
 	_, err = db.Exec(`
-		CREATE TABLE provider_usage (
+		CREATE TABLE subscriptions (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
-			provider_name TEXT UNIQUE NOT NULL,
+			user_id INTEGER NOT NULL DEFAULT 1,
+			name TEXT NOT NULL,
+			service TEXT NOT NULL,
+			billing_day INTEGER NOT NULL,
+			notes TEXT NOT NULL DEFAULT '',
+			auth_token TEXT NOT NULL DEFAULT '',
+			created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+			updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+		);
+		CREATE TABLE subscription_usage (
+			subscription_id INTEGER PRIMARY KEY REFERENCES subscriptions(id) ON DELETE CASCADE,
 			current_usage_seconds INTEGER NOT NULL DEFAULT 0,
 			total_limit_seconds INTEGER NOT NULL DEFAULT 0,
 			is_blocked INTEGER NOT NULL DEFAULT 0,
@@ -64,11 +73,23 @@ func TestSchedulerPollQuota(t *testing.T) {
 	ctx := context.Background()
 	p := &mockProvider{name: "TestProvider", isBlocked: false}
 
+	// Insert subscription
+	sub, err := repo.CreateSubscription(ctx, repository.CreateSubscriptionParams{
+		UserID:     1,
+		Name:       "Test Sub",
+		Service:    "testprovider",
+		BillingDay: 1,
+		AuthToken:  "test_token",
+	})
+	if err != nil {
+		t.Fatalf("failed to insert sub: %v", err)
+	}
+
 	scheduler := NewScheduler(repo, notif, logger, []provider.Provider{p}, time.Minute)
 
 	// 1. Initial state (unblocked)
 	scheduler.pollQuota(ctx)
-	u, err := repo.GetProviderUsage(ctx, "TestProvider")
+	u, err := repo.GetSubscriptionUsage(ctx, sub.ID)
 	if err != nil {
 		t.Fatalf("expected usage to be saved: %v", err)
 	}
@@ -79,7 +100,7 @@ func TestSchedulerPollQuota(t *testing.T) {
 	// 2. Transition to blocked
 	p.isBlocked = true
 	scheduler.pollQuota(ctx)
-	u, _ = repo.GetProviderUsage(ctx, "TestProvider")
+	u, _ = repo.GetSubscriptionUsage(ctx, sub.ID)
 	if !u.IsBlocked {
 		t.Errorf("expected is_blocked to be true")
 	}
@@ -87,7 +108,7 @@ func TestSchedulerPollQuota(t *testing.T) {
 	// 3. Transition to unblocked
 	p.isBlocked = false
 	scheduler.pollQuota(ctx)
-	u, _ = repo.GetProviderUsage(ctx, "TestProvider")
+	u, _ = repo.GetSubscriptionUsage(ctx, sub.ID)
 	if u.IsBlocked {
 		t.Errorf("expected is_blocked to be false")
 	}

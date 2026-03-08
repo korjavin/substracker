@@ -81,15 +81,6 @@ func main() {
 	handler := api.NewHandler(repo, notifSvc, notifCfg.VAPIDPublicKey, sessionSecret, notifCfg.TelegramBotToken, telegramBotUsername)
 	handler.Register(mux)
 
-	// Load stored Z.ai credential on startup
-	if sessionCookie, err := repo.GetProviderCredential(ctx, handler.GetZAIProvider().Name(), "session_cookie"); err == nil && sessionCookie != "" {
-		if err := handler.GetZAIProvider().Login(ctx, map[string]string{"session_cookie": sessionCookie}); err != nil {
-			slog.Error("failed to restore Z.ai session", "error", err)
-		} else {
-			slog.Info("restored Z.ai session from db")
-		}
-	}
-
 	pollIntervalStr := os.Getenv("QUOTA_POLL_INTERVAL")
 	pollInterval := 15 * time.Minute
 	if pollIntervalStr != "" {
@@ -97,31 +88,6 @@ func main() {
 			pollInterval = d
 		} else {
 			slog.Warn("invalid QUOTA_POLL_INTERVAL, using default 15m", "error", err, "value", pollIntervalStr)
-		}
-	}
-
-	// Load saved provider credentials
-	if sessionKey, err := repo.GetProviderCredential(ctx, handler.GetClaudeProvider().Name(), "session_key"); err == nil && sessionKey != "" {
-		if err := handler.GetClaudeProvider().Login(ctx, map[string]string{"session_key": sessionKey}); err != nil {
-			slog.Error("failed to login claude provider with saved credentials", "error", err)
-		} else {
-			slog.Info("loaded claude provider credentials from db")
-		}
-	}
-
-	if sessionCookie, err := repo.GetProviderCredential(ctx, handler.GetGoogleOneProvider().Name(), "session_cookie"); err == nil && sessionCookie != "" {
-		if err := handler.GetGoogleOneProvider().Login(ctx, map[string]string{"session_cookie": sessionCookie}); err != nil {
-			slog.Error("failed to login google one provider with saved credentials", "error", err)
-		} else {
-			slog.Info("loaded google one provider credentials from db")
-		}
-	}
-
-	if sessionToken, err := repo.GetProviderCredential(ctx, handler.GetOpenAIProvider().Name(), "session_token"); err == nil && sessionToken != "" {
-		if err := handler.GetOpenAIProvider().Login(ctx, map[string]string{"session_token": sessionToken}); err != nil {
-			slog.Error("failed to login openai provider with saved credentials", "error", err)
-		} else {
-			slog.Info("loaded openai provider credentials from db")
 		}
 	}
 
