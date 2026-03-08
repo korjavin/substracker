@@ -1,6 +1,6 @@
 services:
   app:
-    image: ghcr.io/korjavin/substracker:latest
+    image: ghcr.io/korjavin/substracker:3d211e230c5638716d17fefda4c455c1ad80a801
     container_name: substracker
     expose:
       - "5454"
