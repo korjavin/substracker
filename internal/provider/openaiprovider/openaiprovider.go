@@ -74,8 +74,9 @@ func (p *OpenAIProvider) FetchUsageInfo(ctx context.Context) (*provider.UsageInf
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
 
-	// For platform.openai.com, the token is passed as Bearer in Authorization header
-	req.Header.Set("Authorization", "Bearer "+sessionToken)
+	// Authenticate using the session cookie
+	cookieString := fmt.Sprintf("__Secure-next-auth.session-token=%s", sessionToken)
+	req.Header.Set("Cookie", cookieString)
 	req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64)")
 	req.Header.Set("Accept", "application/json")
 

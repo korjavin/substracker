@@ -89,7 +89,8 @@ func TestOpenAIProvider_FetchUsageInfo(t *testing.T) {
 			name:  "server returns ok with access_until",
 			token: "token123",
 			handler: func(w http.ResponseWriter, r *http.Request) {
-				if r.Header.Get("Authorization") != "Bearer token123" {
+				cookieHeader := r.Header.Get("Cookie")
+				if cookieHeader != "__Secure-next-auth.session-token=token123" {
 					w.WriteHeader(http.StatusUnauthorized)
 					return
 				}
