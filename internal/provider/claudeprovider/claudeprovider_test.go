@@ -195,6 +195,11 @@ func TestClaudeProvider_FetchUsageInfo(t *testing.T) {
 				w.Write([]byte(billingResp))
 				return
 			}
+			if r.URL.Path == "/organizations/org-123" {
+				w.WriteHeader(http.StatusOK)
+				w.Write([]byte(`{"active_flags": ["usage_limit_exceeded"]}`))
+				return
+			}
 			t.Fatalf("unexpected request to %s", r.URL.Path)
 		}))
 		defer server.Close()
@@ -212,6 +217,9 @@ func TestClaudeProvider_FetchUsageInfo(t *testing.T) {
 		if !info.ResetDate.Equal(expectedDate) {
 			t.Errorf("expected reset date %v, got %v", expectedDate, info.ResetDate)
 		}
+		if !info.IsBlocked {
+			t.Errorf("expected IsBlocked to be true")
+		}
 	})
 
 	t.Run("Success_DateOnly", func(t *testing.T) {
@@ -225,6 +233,11 @@ func TestClaudeProvider_FetchUsageInfo(t *testing.T) {
 				w.WriteHeader(http.StatusOK)
 				billingResp := `{"billing_period": {"end_date": "2024-05-01"}}`
 				w.Write([]byte(billingResp))
+				return
+			}
+			if r.URL.Path == "/organizations/org-123" {
+				w.WriteHeader(http.StatusOK)
+				w.Write([]byte(`{"active_flags": []}`))
 				return
 			}
 			t.Fatalf("unexpected request to %s", r.URL.Path)
@@ -243,6 +256,9 @@ func TestClaudeProvider_FetchUsageInfo(t *testing.T) {
 		expectedDate, _ := time.Parse("2006-01-02", "2024-05-01")
 		if !info.ResetDate.Equal(expectedDate) {
 			t.Errorf("expected reset date %v, got %v", expectedDate, info.ResetDate)
+		}
+		if info.IsBlocked {
+			t.Errorf("expected IsBlocked to be false")
 		}
 	})
 

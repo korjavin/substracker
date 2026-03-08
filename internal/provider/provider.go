@@ -13,7 +13,12 @@ var ErrUnauthorized = errors.New("unauthorized: relogin required")
 type UsageInfo struct {
 	// ResetDate is the date when the current usage limits reset.
 	ResetDate time.Time
-	// Additional fields like current usage, total limit, etc. can be added here.
+	// CurrentUsageSeconds is the current usage in seconds.
+	CurrentUsageSeconds int64
+	// TotalLimitSeconds is the total limit in seconds.
+	TotalLimitSeconds int64
+	// IsBlocked is true if the quota is currently blocked.
+	IsBlocked bool
 }
 
 // Provider defines the interface for different service providers (Claude, OpenAI, Z.ai, etc.).

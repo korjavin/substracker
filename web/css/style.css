@@ -309,6 +309,49 @@ tr:hover td { background: rgba(255,98,0,0.04); }
 .status-ok   { background: var(--green); }
 .status-off  { background: var(--text-dim); }
 
+/* Usage Status */
+.usage-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+}
+.usage-header h3 { margin-bottom: 0; }
+.usage-bar-container {
+  background: var(--surface2);
+  border-radius: 6px;
+  height: 12px;
+  width: 100%;
+  overflow: hidden;
+  margin: 10px 0;
+  border: 1px solid var(--border);
+}
+.usage-bar {
+  height: 100%;
+  background: var(--accent);
+  transition: width 0.3s ease;
+}
+.usage-bar.danger {
+  background: var(--red);
+}
+.usage-details {
+  display: flex;
+  justify-content: space-between;
+  font-size: 13px;
+  color: var(--text-dim);
+}
+.badge-blocked {
+  background: rgba(224,92,107,0.15);
+  color: var(--red);
+  border: 1px solid rgba(224,92,107,0.3);
+  padding: 3px 6px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 700;
+  margin-left: 8px;
+  vertical-align: middle;
+}
+
 /* Log */
 .log-item {
   display: flex;

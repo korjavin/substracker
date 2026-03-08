@@ -149,6 +149,44 @@ func (q *Queries) DeleteTelegramChat(ctx context.Context, chatID string) error {
 	return err
 }
 
+// --- Provider Usage ---
+
+func (q *Queries) UpsertProviderUsage(ctx context.Context, arg UpsertProviderUsageParams) error {
+	isBlockedInt := 0
+	if arg.IsBlocked {
+		isBlockedInt = 1
+	}
+	_, err := q.db.ExecContext(ctx,
+		`INSERT INTO provider_usage (provider_name, current_usage_seconds, total_limit_seconds, is_blocked, fetched_at)
+		 VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
+		 ON CONFLICT(provider_name) DO UPDATE SET
+			current_usage_seconds=excluded.current_usage_seconds,
+			total_limit_seconds=excluded.total_limit_seconds,
+			is_blocked=excluded.is_blocked,
+			fetched_at=CURRENT_TIMESTAMP`,
+		arg.ProviderName, arg.CurrentUsageSeconds, arg.TotalLimitSeconds, isBlockedInt,
+	)
+	return err
+}
+
+func (q *Queries) GetProviderUsage(ctx context.Context, providerName string) (ProviderUsage, error) {
+	row := q.db.QueryRowContext(ctx,
+		`SELECT id, provider_name, current_usage_seconds, total_limit_seconds, is_blocked, fetched_at
+		 FROM provider_usage WHERE provider_name = ? LIMIT 1`,
+		providerName,
+	)
+	var u ProviderUsage
+	var fetchedAt string
+	var isBlockedInt int
+	err := row.Scan(&u.ID, &u.ProviderName, &u.CurrentUsageSeconds, &u.TotalLimitSeconds, &isBlockedInt, &fetchedAt)
+	if err != nil {
+		return u, err
+	}
+	u.FetchedAt = parseTime(fetchedAt)
+	u.IsBlocked = isBlockedInt == 1
+	return u, nil
+}
+
 // --- Notification Log ---
 
 func (q *Queries) CreateNotificationLog(ctx context.Context, arg CreateNotificationLogParams) error {
