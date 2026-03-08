@@ -207,7 +207,7 @@ func (p *ClaudeProvider) FetchUsageInfo(ctx context.Context) (*provider.UsageInf
 	}
 	defer usageResp.Body.Close()
 
-	var sessionPct, weeklyPct float64
+	var sessionPct, weeklyPct *float64
 	var sessionResets, weeklyResets time.Time
 
 	if usageResp.StatusCode == http.StatusOK {
@@ -215,10 +215,12 @@ func (p *ClaudeProvider) FetchUsageInfo(ctx context.Context) (*provider.UsageInf
 		if err := json.NewDecoder(usageResp.Body).Decode(&limits); err == nil {
 			for _, limit := range limits {
 				if limit.Type == "session" {
-					sessionPct = limit.UsagePercentage
+					val := limit.UsagePercentage
+					sessionPct = &val
 					sessionResets = limit.ResetsAt
 				} else if limit.Type == "weekly" {
-					weeklyPct = limit.UsagePercentage
+					val := limit.UsagePercentage
+					weeklyPct = &val
 					weeklyResets = limit.ResetsAt
 				}
 			}

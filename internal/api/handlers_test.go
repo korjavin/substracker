@@ -135,6 +135,19 @@ func TestClaudeLogin(t *testing.T) {
 	if rrInvalid.Code != http.StatusBadRequest {
 		t.Errorf("expected status 400 for invalid json, got %d", rrInvalid.Code)
 	}
+
+	// Test persistence failure
+	dbFail, _ := sql.Open("sqlite", ":memory:")
+	dbFail.Close() // Force operations to fail
+	repoFail := repository.New(dbFail)
+	hFail := &Handler{repo: repoFail, claudeProvider: &mockProvider{}}
+	reqFail := httptest.NewRequest(http.MethodPost, "/api/providers/claude/login", bytes.NewBuffer([]byte(`{"session_key": "fail_key"}`)))
+	rrFail := httptest.NewRecorder()
+	hFail.claudeLogin(rrFail, reqFail)
+
+	if rrFail.Code != http.StatusInternalServerError {
+		t.Errorf("expected status 500 when DB write fails, got %d", rrFail.Code)
+	}
 }
 
 func TestClaudeUsage(t *testing.T) {

@@ -266,11 +266,11 @@ func TestClaudeProvider_FetchUsageInfo(t *testing.T) {
 			t.Fatalf("expected no error, got %v", err)
 		}
 
-		if info.SessionUsagePct != 0.75 {
-			t.Errorf("expected SessionUsagePct 0.75, got %f", info.SessionUsagePct)
+		if info.SessionUsagePct == nil || *info.SessionUsagePct != 0.75 {
+			t.Errorf("expected SessionUsagePct 0.75, got %v", info.SessionUsagePct)
 		}
-		if info.WeeklyUsagePct != 0.45 {
-			t.Errorf("expected WeeklyUsagePct 0.45, got %f", info.WeeklyUsagePct)
+		if info.WeeklyUsagePct == nil || *info.WeeklyUsagePct != 0.45 {
+			t.Errorf("expected WeeklyUsagePct 0.45, got %v", info.WeeklyUsagePct)
 		}
 		expectedSessionReset, _ := time.Parse(time.RFC3339, "2024-05-01T15:00:00Z")
 		if !info.SessionResetsAt.Equal(expectedSessionReset) {
