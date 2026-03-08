@@ -1,11 +1,15 @@
 -- +goose Up
+-- +goose StatementBegin
 CREATE TABLE provider_credentials (
     provider_name TEXT NOT NULL,
-    key TEXT NOT NULL,
-    value TEXT NOT NULL,
+    credential_key TEXT NOT NULL,
+    credential_value TEXT NOT NULL,
     updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    PRIMARY KEY (provider_name, key)
+    UNIQUE(provider_name, credential_key)
 );
+-- +goose StatementEnd
 
 -- +goose Down
+-- +goose StatementBegin
 DROP TABLE provider_credentials;
+-- +goose StatementEnd

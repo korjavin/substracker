@@ -64,10 +64,10 @@ func setupTestDB(t *testing.T) *repository.Queries {
 		);
 		CREATE TABLE provider_credentials (
 			provider_name TEXT NOT NULL,
-			key TEXT NOT NULL,
-			value TEXT NOT NULL,
+			credential_key TEXT NOT NULL,
+			credential_value TEXT NOT NULL,
 			updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-			PRIMARY KEY (provider_name, key)
+			UNIQUE(provider_name, credential_key)
 		);
 	`)
 	if err != nil {
@@ -117,13 +117,14 @@ func TestClaudeLogin(t *testing.T) {
 		t.Errorf("expected mock provider to store 'test_key', got '%s'", m.sessionKey)
 	}
 
-	// Verify persistence
-	creds, err := repo.GetProviderCredentials(context.Background(), "MockClaude")
+	// verify that the credential was persisted to DB
+	ctx := context.Background()
+	savedKey, err := repo.GetProviderCredential(ctx, m.Name(), "session_key")
 	if err != nil {
-		t.Fatalf("failed to get persisted credentials: %v", err)
+		t.Errorf("expected to find credential in DB, got error: %v", err)
 	}
-	if creds["session_key"] != "test_key" {
-		t.Errorf("expected persisted 'test_key', got '%s'", creds["session_key"])
+	if savedKey != "test_key" {
+		t.Errorf("expected saved credential to be 'test_key', got '%s'", savedKey)
 	}
 
 	// Test invalid body
@@ -133,6 +134,19 @@ func TestClaudeLogin(t *testing.T) {
 
 	if rrInvalid.Code != http.StatusBadRequest {
 		t.Errorf("expected status 400 for invalid json, got %d", rrInvalid.Code)
+	}
+
+	// Test persistence failure
+	dbFail, _ := sql.Open("sqlite", ":memory:")
+	dbFail.Close() // Force operations to fail
+	repoFail := repository.New(dbFail)
+	hFail := &Handler{repo: repoFail, claudeProvider: &mockProvider{}}
+	reqFail := httptest.NewRequest(http.MethodPost, "/api/providers/claude/login", bytes.NewBuffer([]byte(`{"session_key": "fail_key"}`)))
+	rrFail := httptest.NewRecorder()
+	hFail.claudeLogin(rrFail, reqFail)
+
+	if rrFail.Code != http.StatusInternalServerError {
+		t.Errorf("expected status 500 when DB write fails, got %d", rrFail.Code)
 	}
 }
 
@@ -268,13 +282,13 @@ func TestGoogleOneLogin(t *testing.T) {
 		t.Errorf("expected mock provider to store 'test_cookie', got '%s'", m.sessionCookie)
 	}
 
-	// Verify persistence
-	creds, err := repo.GetProviderCredentials(context.Background(), "MockGoogleOne")
+	// verify credential persistence
+	savedCookie, err := repo.GetProviderCredential(context.Background(), m.Name(), "session_cookie")
 	if err != nil {
-		t.Fatalf("failed to get persisted credentials: %v", err)
+		t.Errorf("expected to find credential in DB, got error: %v", err)
 	}
-	if creds["session_cookie"] != "test_cookie" {
-		t.Errorf("expected persisted 'test_cookie', got '%s'", creds["session_cookie"])
+	if savedCookie != "test_cookie" {
+		t.Errorf("expected saved credential to be 'test_cookie', got '%s'", savedCookie)
 	}
 
 	// Test invalid body
@@ -301,7 +315,6 @@ func TestGoogleOneUsage(t *testing.T) {
 		t.Errorf("expected status 200, got %d", rr.Code)
 	}
 
-	// Verify caching
 	usage, err := repo.GetProviderUsage(context.Background(), "MockGoogleOne")
 	if err != nil {
 		t.Fatalf("failed to get cached usage: %v", err)

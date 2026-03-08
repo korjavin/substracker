@@ -110,10 +110,10 @@ func TestProviderCredentials(t *testing.T) {
 	_, err = db.Exec(`
 		CREATE TABLE provider_credentials (
 			provider_name TEXT NOT NULL,
-			key TEXT NOT NULL,
-			value TEXT NOT NULL,
+			credential_key TEXT NOT NULL,
+			credential_value TEXT NOT NULL,
 			updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-			PRIMARY KEY (provider_name, key)
+			UNIQUE(provider_name, credential_key)
 		);
 	`)
 	if err != nil {
@@ -123,48 +123,37 @@ func TestProviderCredentials(t *testing.T) {
 	repo := New(db)
 	ctx := context.Background()
 
-	// 1. Get empty
-	creds, err := repo.GetProviderCredentials(ctx, "Claude")
-	if err != nil {
-		t.Fatalf("get failed: %v", err)
-	}
-	if len(creds) != 0 {
-		t.Errorf("expected empty map, got %v", creds)
+	// 1. Get non-existent
+	_, err = repo.GetProviderCredential(ctx, "Claude", "session_key")
+	if err != sql.ErrNoRows {
+		t.Errorf("expected ErrNoRows, got %v", err)
 	}
 
 	// 2. Insert
-	err = repo.UpsertProviderCredential(ctx, UpsertProviderCredentialParams{
-		ProviderName: "Claude",
-		Key:          "session_key",
-		Value:        "key123",
-	})
+	err = repo.UpsertProviderCredential(ctx, "Claude", "session_key", "test_value")
 	if err != nil {
 		t.Fatalf("insert failed: %v", err)
 	}
 
-	creds, err = repo.GetProviderCredentials(ctx, "Claude")
+	val, err := repo.GetProviderCredential(ctx, "Claude", "session_key")
 	if err != nil {
 		t.Fatalf("get failed: %v", err)
 	}
-	if len(creds) != 1 || creds["session_key"] != "key123" {
-		t.Errorf("unexpected values after insert: %+v", creds)
+	if val != "test_value" {
+		t.Errorf("expected 'test_value', got '%s'", val)
 	}
 
 	// 3. Update
-	err = repo.UpsertProviderCredential(ctx, UpsertProviderCredentialParams{
-		ProviderName: "Claude",
-		Key:          "session_key",
-		Value:        "key456",
-	})
+	err = repo.UpsertProviderCredential(ctx, "Claude", "session_key", "new_value")
 	if err != nil {
 		t.Fatalf("update failed: %v", err)
 	}
 
-	creds, err = repo.GetProviderCredentials(ctx, "Claude")
+	val, err = repo.GetProviderCredential(ctx, "Claude", "session_key")
 	if err != nil {
 		t.Fatalf("get after update failed: %v", err)
 	}
-	if creds["session_key"] != "key456" {
-		t.Errorf("unexpected values after update: %+v", creds)
+	if val != "new_value" {
+		t.Errorf("expected 'new_value', got '%s'", val)
 	}
 }
