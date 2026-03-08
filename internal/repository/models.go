@@ -83,9 +83,3 @@ type ProviderCredential struct {
 	CredentialValue string    `json:"credential_value"`
 	UpdatedAt       time.Time `json:"updated_at"`
 }
-
-type UpsertProviderCredentialParams struct {
-	ProviderName    string
-	CredentialKey   string
-	CredentialValue string
-}

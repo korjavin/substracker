@@ -62,6 +62,13 @@ func setupTestDB(t *testing.T) *repository.Queries {
 			is_blocked INTEGER NOT NULL DEFAULT 0,
 			fetched_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 		);
+		CREATE TABLE provider_credentials (
+			provider_name TEXT NOT NULL,
+			credential_key TEXT NOT NULL,
+			credential_value TEXT NOT NULL,
+			updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+			UNIQUE(provider_name, credential_key)
+		);
 	`)
 	if err != nil {
 		t.Fatalf("failed to create schema: %v", err)
@@ -92,8 +99,9 @@ func TestClaudeLoginInfo(t *testing.T) {
 }
 
 func TestClaudeLogin(t *testing.T) {
+	repo := setupTestDB(t)
 	m := &mockProvider{}
-	h := &Handler{claudeProvider: m}
+	h := &Handler{repo: repo, claudeProvider: m}
 
 	body := []byte(`{"session_key": "test_key"}`)
 	req := httptest.NewRequest(http.MethodPost, "/api/providers/claude/login", bytes.NewBuffer(body))
@@ -109,6 +117,16 @@ func TestClaudeLogin(t *testing.T) {
 		t.Errorf("expected mock provider to store 'test_key', got '%s'", m.sessionKey)
 	}
 
+	// verify that the credential was persisted to DB
+	ctx := context.Background()
+	savedKey, err := repo.GetProviderCredential(ctx, m.Name(), "session_key")
+	if err != nil {
+		t.Errorf("expected to find credential in DB, got error: %v", err)
+	}
+	if savedKey != "test_key" {
+		t.Errorf("expected saved credential to be 'test_key', got '%s'", savedKey)
+	}
+
 	// Test invalid body
 	reqInvalid := httptest.NewRequest(http.MethodPost, "/api/providers/claude/login", bytes.NewBuffer([]byte(`{invalid_json}`)))
 	rrInvalid := httptest.NewRecorder()
@@ -116,6 +134,19 @@ func TestClaudeLogin(t *testing.T) {
 
 	if rrInvalid.Code != http.StatusBadRequest {
 		t.Errorf("expected status 400 for invalid json, got %d", rrInvalid.Code)
+	}
+
+	// Test persistence failure
+	dbFail, _ := sql.Open("sqlite", ":memory:")
+	dbFail.Close() // Force operations to fail
+	repoFail := repository.New(dbFail)
+	hFail := &Handler{repo: repoFail, claudeProvider: &mockProvider{}}
+	reqFail := httptest.NewRequest(http.MethodPost, "/api/providers/claude/login", bytes.NewBuffer([]byte(`{"session_key": "fail_key"}`)))
+	rrFail := httptest.NewRecorder()
+	hFail.claudeLogin(rrFail, reqFail)
+
+	if rrFail.Code != http.StatusInternalServerError {
+		t.Errorf("expected status 500 when DB write fails, got %d", rrFail.Code)
 	}
 }
 

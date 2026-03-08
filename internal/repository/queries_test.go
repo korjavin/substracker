@@ -78,7 +78,7 @@ func TestProviderUsage(t *testing.T) {
 	}
 }
 
-func TestProviderCredential(t *testing.T) {
+func TestProviderCredentials(t *testing.T) {
 	db, err := sql.Open("sqlite", ":memory:")
 	if err != nil {
 		t.Fatalf("failed to open memory db: %v", err)
@@ -91,7 +91,7 @@ func TestProviderCredential(t *testing.T) {
 			credential_key TEXT NOT NULL,
 			credential_value TEXT NOT NULL,
 			updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-			PRIMARY KEY (provider_name, credential_key)
+			UNIQUE(provider_name, credential_key)
 		);
 	`)
 	if err != nil {
@@ -102,44 +102,36 @@ func TestProviderCredential(t *testing.T) {
 	ctx := context.Background()
 
 	// 1. Get non-existent
-	_, err = repo.GetProviderCredential(ctx, "Google One", "session_cookie")
+	_, err = repo.GetProviderCredential(ctx, "Claude", "session_key")
 	if err != sql.ErrNoRows {
 		t.Errorf("expected ErrNoRows, got %v", err)
 	}
 
 	// 2. Insert
-	err = repo.UpsertProviderCredential(ctx, UpsertProviderCredentialParams{
-		ProviderName:    "Google One",
-		CredentialKey:   "session_cookie",
-		CredentialValue: "test_cookie_123",
-	})
+	err = repo.UpsertProviderCredential(ctx, "Claude", "session_key", "test_value")
 	if err != nil {
 		t.Fatalf("insert failed: %v", err)
 	}
 
-	c, err := repo.GetProviderCredential(ctx, "Google One", "session_cookie")
+	val, err := repo.GetProviderCredential(ctx, "Claude", "session_key")
 	if err != nil {
 		t.Fatalf("get failed: %v", err)
 	}
-	if c.ProviderName != "Google One" || c.CredentialKey != "session_cookie" || c.CredentialValue != "test_cookie_123" {
-		t.Errorf("unexpected values after insert: %+v", c)
+	if val != "test_value" {
+		t.Errorf("expected 'test_value', got '%s'", val)
 	}
 
 	// 3. Update
-	err = repo.UpsertProviderCredential(ctx, UpsertProviderCredentialParams{
-		ProviderName:    "Google One",
-		CredentialKey:   "session_cookie",
-		CredentialValue: "new_cookie_456",
-	})
+	err = repo.UpsertProviderCredential(ctx, "Claude", "session_key", "new_value")
 	if err != nil {
 		t.Fatalf("update failed: %v", err)
 	}
 
-	c, err = repo.GetProviderCredential(ctx, "Google One", "session_cookie")
+	val, err = repo.GetProviderCredential(ctx, "Claude", "session_key")
 	if err != nil {
 		t.Fatalf("get after update failed: %v", err)
 	}
-	if c.CredentialValue != "new_cookie_456" {
-		t.Errorf("unexpected values after update: %+v", c)
+	if val != "new_value" {
+		t.Errorf("expected 'new_value', got '%s'", val)
 	}
 }
