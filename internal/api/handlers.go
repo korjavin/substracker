@@ -11,23 +11,26 @@ import (
 
 	"github.com/korjavin/substracker/internal/provider"
 	"github.com/korjavin/substracker/internal/provider/claudeprovider"
+	"github.com/korjavin/substracker/internal/provider/googleoneprovider"
 	"github.com/korjavin/substracker/internal/repository"
 	"github.com/korjavin/substracker/internal/service"
 )
 
 type Handler struct {
-	repo           *repository.Queries
-	notifSvc       *service.NotificationService
-	vapidPublicKey string
-	claudeProvider provider.Provider
+	repo              *repository.Queries
+	notifSvc          *service.NotificationService
+	vapidPublicKey    string
+	claudeProvider    provider.Provider
+	googleOneProvider provider.Provider
 }
 
 func NewHandler(repo *repository.Queries, notifSvc *service.NotificationService, vapidPublicKey string) *Handler {
 	return &Handler{
-		repo:           repo,
-		notifSvc:       notifSvc,
-		vapidPublicKey: vapidPublicKey,
-		claudeProvider: claudeprovider.NewClaudeProvider(),
+		repo:              repo,
+		notifSvc:          notifSvc,
+		vapidPublicKey:    vapidPublicKey,
+		claudeProvider:    claudeprovider.NewClaudeProvider(),
+		googleOneProvider: googleoneprovider.NewGoogleOneProvider(),
 	}
 }
 
@@ -38,6 +41,11 @@ func (h *Handler) Register(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/providers/claude/login-info", h.claudeLoginInfo)
 	mux.HandleFunc("POST /api/providers/claude/login", h.claudeLogin)
 	mux.HandleFunc("GET /api/providers/claude/usage", h.claudeUsage)
+
+	// Google One Provider
+	mux.HandleFunc("GET /api/providers/googleone/login-info", h.googleOneLoginInfo)
+	mux.HandleFunc("POST /api/providers/googleone/login", h.googleOneLogin)
+	mux.HandleFunc("GET /api/providers/googleone/usage", h.googleOneUsage)
 
 	// Subscriptions
 	mux.HandleFunc("GET /api/subscriptions", h.listSubscriptions)
@@ -118,6 +126,48 @@ func (h *Handler) claudeUsage(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		slog.Error("fetch claude usage", "error", err)
+		writeError(w, http.StatusInternalServerError, "failed to fetch usage")
+		return
+	}
+
+	writeJSON(w, http.StatusOK, info)
+}
+
+// --- Google One Provider ---
+
+func (h *Handler) googleOneLoginInfo(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, http.StatusOK, map[string]string{
+		"url":          "https://one.google.com/",
+		"instructions": "Log in to one.google.com, open Developer Tools -> Application -> Cookies, and copy the value of the 'SID' cookie.",
+	})
+}
+
+func (h *Handler) googleOneLogin(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		SessionCookie string `json:"session_cookie"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+
+	err := h.googleOneProvider.Login(r.Context(), map[string]string{"session_cookie": req.SessionCookie})
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]string{"status": "logged_in"})
+}
+
+func (h *Handler) googleOneUsage(w http.ResponseWriter, r *http.Request) {
+	info, err := h.googleOneProvider.FetchUsageInfo(r.Context())
+	if err != nil {
+		if errors.Is(err, provider.ErrUnauthorized) {
+			writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "relogin_required"})
+			return
+		}
+		slog.Error("fetch google one usage", "error", err)
 		writeError(w, http.StatusInternalServerError, "failed to fetch usage")
 		return
 	}
