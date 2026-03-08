@@ -103,10 +103,10 @@ document.getElementById('refresh-usage-btn').addEventListener('click', async () 
   btn.disabled = true;
   btn.textContent = 'Refreshing...';
   try {
-    // Only refresh claude and googleone as those are currently supported
     const results = await Promise.allSettled([
       api('GET', '/api/providers/claude/usage'),
-      api('GET', '/api/providers/googleone/usage')
+      api('GET', '/api/providers/googleone/usage'),
+      api('GET', '/api/providers/openai/usage')
     ]);
 
     // Check for errors
@@ -324,6 +324,55 @@ document.getElementById('detail-delete-btn').addEventListener('click', () => {
     });
   }
 });
+
+// ---- OpenAI Modal ----
+const openaiBackdrop = document.getElementById('openai-modal-backdrop');
+const openaiForm = document.getElementById('openai-form');
+
+document.getElementById('openai-settings-btn').addEventListener('click', async () => {
+  openaiBackdrop.classList.add('open');
+  try {
+    const info = await api('GET', '/api/providers/openai/login-info');
+    document.getElementById('openai-modal-instructions').innerHTML = `
+      ${info.instructions}<br><br>
+      <a href="${info.url}" target="_blank" style="color:var(--accent)">Open OpenAI Platform</a>
+    `;
+  } catch (e) {
+    document.getElementById('openai-modal-instructions').textContent = 'Error loading instructions: ' + e.message;
+  }
+});
+
+document.getElementById('openai-modal-cancel').addEventListener('click', () => {
+  openaiBackdrop.classList.remove('open');
+  openaiForm.reset();
+});
+
+openaiBackdrop.addEventListener('click', e => {
+  if (e.target === openaiBackdrop) {
+    openaiBackdrop.classList.remove('open');
+    openaiForm.reset();
+  }
+});
+
+openaiForm.addEventListener('submit', async e => {
+  e.preventDefault();
+  const token = document.getElementById('openai-session-token').value.trim();
+  const saveBtn = document.getElementById('openai-modal-save');
+  saveBtn.disabled = true;
+  saveBtn.textContent = 'Saving...';
+  try {
+    await api('POST', '/api/providers/openai/login', { session_token: token });
+    openaiBackdrop.classList.remove('open');
+    openaiForm.reset();
+    document.getElementById('refresh-usage-btn').click(); // trigger a refresh
+  } catch (err) {
+    alert('Failed to save OpenAI token: ' + err.message);
+  } finally {
+    saveBtn.disabled = false;
+    saveBtn.textContent = 'Save';
+  }
+});
+
 
 // ---- Modal ----
 const backdrop = document.getElementById('modal-backdrop');
