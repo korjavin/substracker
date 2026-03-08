@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"strconv"
 
+	"github.com/korjavin/substracker/internal/auth"
 	"github.com/korjavin/substracker/internal/provider"
 	"github.com/korjavin/substracker/internal/provider/claudeprovider"
 	"github.com/korjavin/substracker/internal/provider/googleoneprovider"
@@ -17,60 +18,96 @@ import (
 )
 
 type Handler struct {
-	repo              *repository.Queries
-	notifSvc          *service.NotificationService
-	vapidPublicKey    string
-	claudeProvider    provider.Provider
-	googleOneProvider provider.Provider
+	repo                *repository.Queries
+	notifSvc            *service.NotificationService
+	vapidPublicKey      string
+	sessionSecret       string
+	telegramBotToken    string
+	telegramBotUsername string
+	claudeProvider      provider.Provider
+	googleOneProvider   provider.Provider
 }
 
-func NewHandler(repo *repository.Queries, notifSvc *service.NotificationService, vapidPublicKey string) *Handler {
+func NewHandler(repo *repository.Queries, notifSvc *service.NotificationService, vapidPublicKey, sessionSecret, telegramBotToken, telegramBotUsername string) *Handler {
 	return &Handler{
-		repo:              repo,
-		notifSvc:          notifSvc,
-		vapidPublicKey:    vapidPublicKey,
-		claudeProvider:    claudeprovider.NewClaudeProvider(),
-		googleOneProvider: googleoneprovider.NewGoogleOneProvider(),
+		repo:                repo,
+		notifSvc:            notifSvc,
+		vapidPublicKey:      vapidPublicKey,
+		sessionSecret:       sessionSecret,
+		telegramBotToken:    telegramBotToken,
+		telegramBotUsername: telegramBotUsername,
+		claudeProvider:      claudeprovider.NewClaudeProvider(),
+		googleOneProvider:   googleoneprovider.NewGoogleOneProvider(),
 	}
 }
 
 func (h *Handler) Register(mux *http.ServeMux) {
 	mux.HandleFunc("GET /health", h.health)
 
+	// Auth Check
+	mux.HandleFunc("GET /api/auth/me", h.authStatus)
+
+	apiMux := http.NewServeMux()
+
 	// Claude Provider
-	mux.HandleFunc("GET /api/providers/claude/login-info", h.claudeLoginInfo)
-	mux.HandleFunc("POST /api/providers/claude/login", h.claudeLogin)
-	mux.HandleFunc("GET /api/providers/claude/usage", h.claudeUsage)
+	apiMux.HandleFunc("GET /api/providers/claude/login-info", h.claudeLoginInfo)
+	apiMux.HandleFunc("POST /api/providers/claude/login", h.claudeLogin)
+	apiMux.HandleFunc("GET /api/providers/claude/usage", h.claudeUsage)
 
 	// Google One Provider
-	mux.HandleFunc("GET /api/providers/googleone/login-info", h.googleOneLoginInfo)
-	mux.HandleFunc("POST /api/providers/googleone/login", h.googleOneLogin)
-	mux.HandleFunc("GET /api/providers/googleone/usage", h.googleOneUsage)
+	apiMux.HandleFunc("GET /api/providers/googleone/login-info", h.googleOneLoginInfo)
+	apiMux.HandleFunc("POST /api/providers/googleone/login", h.googleOneLogin)
+	apiMux.HandleFunc("GET /api/providers/googleone/usage", h.googleOneUsage)
 
 	// Subscriptions
-	mux.HandleFunc("GET /api/subscriptions", h.listSubscriptions)
-	mux.HandleFunc("POST /api/subscriptions", h.createSubscription)
-	mux.HandleFunc("GET /api/subscriptions/{id}", h.getSubscription)
-	mux.HandleFunc("PUT /api/subscriptions/{id}", h.updateSubscription)
-	mux.HandleFunc("DELETE /api/subscriptions/{id}", h.deleteSubscription)
+	apiMux.HandleFunc("GET /api/subscriptions", h.listSubscriptions)
+	apiMux.HandleFunc("POST /api/subscriptions", h.createSubscription)
+	apiMux.HandleFunc("GET /api/subscriptions/{id}", h.getSubscription)
+	apiMux.HandleFunc("PUT /api/subscriptions/{id}", h.updateSubscription)
+	apiMux.HandleFunc("DELETE /api/subscriptions/{id}", h.deleteSubscription)
 
 	// Web Push
-	mux.HandleFunc("GET /api/vapid-public-key", h.getVapidPublicKey)
-	mux.HandleFunc("POST /api/webpush/subscribe", h.webpushSubscribe)
-	mux.HandleFunc("DELETE /api/webpush/subscribe", h.webpushUnsubscribe)
-	mux.HandleFunc("GET /api/webpush/subscriptions", h.listWebPushSubs)
+	apiMux.HandleFunc("GET /api/vapid-public-key", h.getVapidPublicKey)
+	apiMux.HandleFunc("POST /api/webpush/subscribe", h.webpushSubscribe)
+	apiMux.HandleFunc("DELETE /api/webpush/subscribe", h.webpushUnsubscribe)
+	apiMux.HandleFunc("GET /api/webpush/subscriptions", h.listWebPushSubs)
 
 	// Telegram
-	mux.HandleFunc("GET /api/telegram/chats", h.listTelegramChats)
-	mux.HandleFunc("POST /api/telegram/chats", h.addTelegramChat)
-	mux.HandleFunc("DELETE /api/telegram/chats/{chatId}", h.deleteTelegramChat)
+	apiMux.HandleFunc("GET /api/telegram/chats", h.listTelegramChats)
+	apiMux.HandleFunc("POST /api/telegram/chats", h.addTelegramChat)
+	apiMux.HandleFunc("DELETE /api/telegram/chats/{chatId}", h.deleteTelegramChat)
 
 	// Notifications
-	mux.HandleFunc("GET /api/notifications/log", h.listNotificationLogs)
-	mux.HandleFunc("POST /api/notifications/test", h.testNotification)
+	apiMux.HandleFunc("GET /api/notifications/log", h.listNotificationLogs)
+	apiMux.HandleFunc("POST /api/notifications/test", h.testNotification)
 
-	// Static files (must come last)
-	mux.Handle("/", http.FileServer(http.Dir("web")))
+	mux.Handle("/api/", auth.AuthMiddleware(h.sessionSecret)(apiMux))
+
+	// Auth routes
+	mux.HandleFunc("GET /auth/telegram/callback", h.telegramCallback)
+	mux.HandleFunc("GET /auth/logout", h.logout)
+
+	// Protect root explicitly, let /login through unauthenticated
+	mux.HandleFunc("GET /login", func(w http.ResponseWriter, r *http.Request) {
+		http.ServeFile(w, r, "web/login.html")
+	})
+
+	fs := http.FileServer(http.Dir("web"))
+	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		// Only check auth for exact matches of / or /index.html
+		if r.URL.Path == "/" || r.URL.Path == "/index.html" {
+			cookie, err := r.Cookie("auth_session")
+			if err != nil {
+				http.Redirect(w, r, "/login", http.StatusFound)
+				return
+			}
+			if _, ok := auth.VerifySessionToken(cookie.Value, h.sessionSecret); !ok {
+				http.Redirect(w, r, "/login", http.StatusFound)
+				return
+			}
+		}
+		fs.ServeHTTP(w, r)
+	})
 }
 
 func writeJSON(w http.ResponseWriter, status int, v any) {
@@ -178,7 +215,13 @@ func (h *Handler) googleOneUsage(w http.ResponseWriter, r *http.Request) {
 // --- Subscriptions ---
 
 func (h *Handler) listSubscriptions(w http.ResponseWriter, r *http.Request) {
-	subs, err := h.repo.ListSubscriptions(r.Context())
+	user, ok := auth.UserFromContext(r.Context())
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+
+	subs, err := h.repo.ListSubscriptions(r.Context(), user.ID)
 	if err != nil {
 		slog.Error("list subscriptions", "error", err)
 		writeError(w, http.StatusInternalServerError, "failed to list subscriptions")
@@ -191,6 +234,12 @@ func (h *Handler) listSubscriptions(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) createSubscription(w http.ResponseWriter, r *http.Request) {
+	user, ok := auth.UserFromContext(r.Context())
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+
 	var req struct {
 		Name       string `json:"name"`
 		Service    string `json:"service"`
@@ -207,6 +256,7 @@ func (h *Handler) createSubscription(w http.ResponseWriter, r *http.Request) {
 	}
 
 	sub, err := h.repo.CreateSubscription(r.Context(), repository.CreateSubscriptionParams{
+		UserID:     user.ID,
 		Name:       req.Name,
 		Service:    req.Service,
 		BillingDay: req.BillingDay,
@@ -221,12 +271,18 @@ func (h *Handler) createSubscription(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) getSubscription(w http.ResponseWriter, r *http.Request) {
+	user, ok := auth.UserFromContext(r.Context())
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+
 	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "invalid id")
 		return
 	}
-	sub, err := h.repo.GetSubscription(r.Context(), id)
+	sub, err := h.repo.GetSubscription(r.Context(), id, user.ID)
 	if err == sql.ErrNoRows {
 		writeError(w, http.StatusNotFound, "subscription not found")
 		return
@@ -240,6 +296,12 @@ func (h *Handler) getSubscription(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) updateSubscription(w http.ResponseWriter, r *http.Request) {
+	user, ok := auth.UserFromContext(r.Context())
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+
 	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "invalid id")
@@ -262,6 +324,7 @@ func (h *Handler) updateSubscription(w http.ResponseWriter, r *http.Request) {
 
 	sub, err := h.repo.UpdateSubscription(r.Context(), repository.UpdateSubscriptionParams{
 		ID:         id,
+		UserID:     user.ID,
 		Name:       req.Name,
 		Service:    req.Service,
 		BillingDay: req.BillingDay,
@@ -280,12 +343,18 @@ func (h *Handler) updateSubscription(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) deleteSubscription(w http.ResponseWriter, r *http.Request) {
+	user, ok := auth.UserFromContext(r.Context())
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+
 	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "invalid id")
 		return
 	}
-	if err := h.repo.DeleteSubscription(r.Context(), id); err != nil {
+	if err := h.repo.DeleteSubscription(r.Context(), id, user.ID); err != nil {
 		slog.Error("delete subscription", "error", err)
 		writeError(w, http.StatusInternalServerError, "failed to delete subscription")
 		return
@@ -300,6 +369,12 @@ func (h *Handler) getVapidPublicKey(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) webpushSubscribe(w http.ResponseWriter, r *http.Request) {
+	user, ok := auth.UserFromContext(r.Context())
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+
 	var req struct {
 		Endpoint string `json:"endpoint"`
 		Keys     struct {
@@ -317,6 +392,7 @@ func (h *Handler) webpushSubscribe(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := h.repo.UpsertWebPushSubscription(r.Context(), repository.WebpushSubscriptionParams{
+		UserID:   user.ID,
 		Endpoint: req.Endpoint,
 		P256dh:   req.Keys.P256dh,
 		Auth:     req.Keys.Auth,
@@ -329,6 +405,12 @@ func (h *Handler) webpushSubscribe(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) webpushUnsubscribe(w http.ResponseWriter, r *http.Request) {
+	user, ok := auth.UserFromContext(r.Context())
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+
 	var req struct {
 		Endpoint string `json:"endpoint"`
 	}
@@ -336,7 +418,7 @@ func (h *Handler) webpushUnsubscribe(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
-	if err := h.repo.DeleteWebPushSubscription(r.Context(), req.Endpoint); err != nil {
+	if err := h.repo.DeleteWebPushSubscription(r.Context(), req.Endpoint, user.ID); err != nil {
 		slog.Error("delete webpush subscription", "error", err)
 		writeError(w, http.StatusInternalServerError, "failed to remove subscription")
 		return
@@ -345,7 +427,13 @@ func (h *Handler) webpushUnsubscribe(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) listWebPushSubs(w http.ResponseWriter, r *http.Request) {
-	subs, err := h.repo.ListWebPushSubscriptions(r.Context())
+	user, ok := auth.UserFromContext(r.Context())
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+
+	subs, err := h.repo.ListWebPushSubscriptions(r.Context(), user.ID)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to list subscriptions")
 		return
@@ -359,7 +447,13 @@ func (h *Handler) listWebPushSubs(w http.ResponseWriter, r *http.Request) {
 // --- Telegram ---
 
 func (h *Handler) listTelegramChats(w http.ResponseWriter, r *http.Request) {
-	chats, err := h.repo.ListTelegramChats(r.Context())
+	user, ok := auth.UserFromContext(r.Context())
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+
+	chats, err := h.repo.ListTelegramChats(r.Context(), user.ID)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to list chats")
 		return
@@ -371,6 +465,12 @@ func (h *Handler) listTelegramChats(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) addTelegramChat(w http.ResponseWriter, r *http.Request) {
+	user, ok := auth.UserFromContext(r.Context())
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+
 	var req struct {
 		ChatID string `json:"chat_id"`
 	}
@@ -382,7 +482,7 @@ func (h *Handler) addTelegramChat(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "chat_id is required")
 		return
 	}
-	if err := h.repo.CreateTelegramChat(r.Context(), req.ChatID); err != nil {
+	if err := h.repo.CreateTelegramChat(r.Context(), req.ChatID, user.ID); err != nil {
 		slog.Error("create telegram chat", "error", err)
 		writeError(w, http.StatusInternalServerError, "failed to add chat")
 		return
@@ -391,8 +491,14 @@ func (h *Handler) addTelegramChat(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) deleteTelegramChat(w http.ResponseWriter, r *http.Request) {
+	user, ok := auth.UserFromContext(r.Context())
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+
 	chatID := r.PathValue("chatId")
-	if err := h.repo.DeleteTelegramChat(r.Context(), chatID); err != nil {
+	if err := h.repo.DeleteTelegramChat(r.Context(), chatID, user.ID); err != nil {
 		slog.Error("delete telegram chat", "error", err)
 		writeError(w, http.StatusInternalServerError, "failed to remove chat")
 		return
@@ -403,7 +509,13 @@ func (h *Handler) deleteTelegramChat(w http.ResponseWriter, r *http.Request) {
 // --- Notification Log ---
 
 func (h *Handler) listNotificationLogs(w http.ResponseWriter, r *http.Request) {
-	logs, err := h.repo.ListNotificationLogs(r.Context())
+	user, ok := auth.UserFromContext(r.Context())
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+
+	logs, err := h.repo.ListNotificationLogs(r.Context(), user.ID)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to list logs")
 		return
@@ -415,6 +527,12 @@ func (h *Handler) listNotificationLogs(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) testNotification(w http.ResponseWriter, r *http.Request) {
-	h.notifSvc.SendAll(context.Background(), 0, "Test notification from SubsTracker! If you see this, notifications are working.")
+	user, ok := auth.UserFromContext(r.Context())
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+
+	h.notifSvc.SendAll(context.Background(), user.ID, 0, "Test notification from SubsTracker! If you see this, notifications are working.")
 	writeJSON(w, http.StatusOK, map[string]string{"status": "sent"})
 }

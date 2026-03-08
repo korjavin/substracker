@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>SubsTracker - Login</title>
+  <link rel="stylesheet" href="/css/style.css" />
+  <style>
+    body {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      height: 100vh;
+      margin: 0;
+    }
+    .login-container {
+      text-align: center;
+      padding: 40px;
+    }
+    .login-container h1 {
+      margin-top: 0;
+      margin-bottom: 30px;
+    }
+  </style>
+</head>
+<body>
+
+<div class="card login-container" id="login-card">
+  <h1>SubsTracker</h1>
+  <p style="margin-bottom: 20px; color: var(--text-dim);">Please log in to manage your subscriptions.</p>
+
+  <div id="telegram-login-container"></div>
+</div>
+
+<script>
+  // Fetch bot username from a dedicated public endpoint or /api/auth/me
+  fetch('/api/auth/me').then(res => {
+    if (res.ok) {
+      window.location.href = '/';
+      return;
+    }
+    return res.json();
+  }).then(data => {
+    if (data && data.bot_username) {
+      const script = document.createElement('script');
+      script.async = true;
+      script.src = "https://telegram.org/js/telegram-widget.js?22";
+      script.setAttribute("data-telegram-login", data.bot_username);
+      script.setAttribute("data-size", "large");
+      script.setAttribute("data-auth-url", window.location.origin + "/auth/telegram/callback");
+      script.setAttribute("data-request-access", "write");
+      document.getElementById('telegram-login-container').appendChild(script);
+    }
+  });
+</script>
+</body>
+</html>

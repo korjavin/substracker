@@ -427,5 +427,28 @@ async function loadLog() {
 
 document.getElementById('refresh-log-btn').addEventListener('click', loadLog);
 
-// ---- Init ----
-loadSubs();
+// ---- Auth Check & Init ----
+async function checkAuthAndInit() {
+  try {
+    const res = await fetch('/api/auth/me');
+    if (!res.ok) {
+      if (res.status === 401) {
+        window.location.href = '/login';
+      }
+      return;
+    }
+    const user = await res.json();
+    document.getElementById('user-info').textContent = `User ID: ${user.id}`;
+    const logoutBtn = document.getElementById('logout-btn');
+    logoutBtn.style.display = 'block';
+    logoutBtn.addEventListener('click', () => {
+      window.location.href = '/auth/logout';
+    });
+
+    loadSubs();
+  } catch (e) {
+    console.error("Auth check failed:", e);
+  }
+}
+
+checkAuthAndInit();

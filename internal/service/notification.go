@@ -42,17 +42,17 @@ func NewNotificationService(repo *repository.Queries, cfg NotificationConfig) *N
 
 // SendAll sends message via all configured channels.
 // subID > 0 means it's tied to a real subscription and will be logged.
-func (s *NotificationService) SendAll(ctx context.Context, subID int64, message string) {
-	s.sendWebPush(ctx, subID, message)
-	s.sendTelegram(ctx, subID, message)
+func (s *NotificationService) SendAll(ctx context.Context, userID, subID int64, message string) {
+	s.sendWebPush(ctx, userID, subID, message)
+	s.sendTelegram(ctx, userID, subID, message)
 }
 
-func (s *NotificationService) sendWebPush(ctx context.Context, subID int64, message string) {
+func (s *NotificationService) sendWebPush(ctx context.Context, userID, subID int64, message string) {
 	if s.cfg.VAPIDPublicKey == "" || s.cfg.VAPIDPrivateKey == "" {
 		return
 	}
 
-	subs, err := s.repo.ListWebPushSubscriptions(ctx)
+	subs, err := s.repo.ListWebPushSubscriptions(ctx, userID)
 	if err != nil {
 		slog.Error("list webpush subscriptions", "error", err)
 		return
@@ -90,12 +90,12 @@ func (s *NotificationService) sendWebPush(ctx context.Context, subID int64, mess
 	}
 }
 
-func (s *NotificationService) sendTelegram(ctx context.Context, subID int64, message string) {
+func (s *NotificationService) sendTelegram(ctx context.Context, userID, subID int64, message string) {
 	if s.tgBot == nil {
 		return
 	}
 
-	chats, err := s.repo.ListTelegramChats(ctx)
+	chats, err := s.repo.ListTelegramChats(ctx, userID)
 	if err != nil {
 		slog.Error("list telegram chats", "error", err)
 		return

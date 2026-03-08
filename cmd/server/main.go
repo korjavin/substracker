@@ -61,7 +61,13 @@ func main() {
 	mux := http.NewServeMux()
 	limiter := middleware.NewRateLimiter(10, 20) // 10 req/s, burst 20
 
-	handler := api.NewHandler(repo, notifSvc, notifCfg.VAPIDPublicKey)
+	sessionSecret := os.Getenv("SESSION_SECRET")
+	if sessionSecret == "" {
+		sessionSecret = "dev-secret-key-change-in-prod"
+	}
+	telegramBotUsername := os.Getenv("TELEGRAM_BOT_USERNAME")
+
+	handler := api.NewHandler(repo, notifSvc, notifCfg.VAPIDPublicKey, sessionSecret, notifCfg.TelegramBotToken, telegramBotUsername)
 	handler.Register(mux)
 
 	srv := &http.Server{

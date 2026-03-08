@@ -46,7 +46,7 @@ func (s *Scheduler) check(ctx context.Context) {
 	today := now.Day()
 	tomorrow := now.AddDate(0, 0, 1).Day()
 
-	subs, err := s.repo.ListSubscriptions(ctx)
+	subs, err := s.repo.ListAllSubscriptions(ctx)
 	if err != nil {
 		s.logger.Error("scheduler: list subscriptions", "error", err)
 		return
@@ -57,10 +57,10 @@ func (s *Scheduler) check(ctx context.Context) {
 		switch {
 		case day == today:
 			msg := fmt.Sprintf("Your %s subscription has reset! New billing cycle started.", sub.Name)
-			s.notif.SendAll(ctx, sub.ID, msg)
+			s.notif.SendAll(ctx, sub.UserID, sub.ID, msg)
 		case day == tomorrow:
 			msg := fmt.Sprintf("Reminder: Your %s subscription resets tomorrow (day %d).", sub.Name, day)
-			s.notif.SendAll(ctx, sub.ID, msg)
+			s.notif.SendAll(ctx, sub.UserID, sub.ID, msg)
 		}
 	}
 }
