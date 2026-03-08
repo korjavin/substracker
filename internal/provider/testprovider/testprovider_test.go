@@ -16,49 +16,24 @@ func TestTestProvider_Name(t *testing.T) {
 	}
 }
 
-func TestTestProvider_Login(t *testing.T) {
-	p := NewTestProvider()
-	ctx := context.Background()
-
-	// Test case: Missing token
-	err := p.Login(ctx, map[string]string{})
-	if err == nil || err.Error() != "missing or empty token" {
-		t.Errorf("expected missing or empty token error, got %v", err)
-	}
-
-	// Test case: Empty token
-	err = p.Login(ctx, map[string]string{"token": ""})
-	if err == nil || err.Error() != "missing or empty token" {
-		t.Errorf("expected missing or empty token error, got %v", err)
-	}
-
-	// Test case: Valid token
-	err = p.Login(ctx, map[string]string{"token": "dummy_token"})
-	if err != nil {
-		t.Errorf("expected nil error, got %v", err)
-	}
-	if !p.authenticated {
-		t.Errorf("expected authenticated to be true")
-	}
-}
-
 func TestTestProvider_FetchUsageInfo(t *testing.T) {
 	p := NewTestProvider()
 	ctx := context.Background()
 
-	// Test case: Not authenticated
-	_, err := p.FetchUsageInfo(ctx)
+	// Test case: Missing credentials
+	_, err := p.FetchUsageInfo(ctx, nil)
 	if !errors.Is(err, provider.ErrUnauthorized) {
 		t.Errorf("expected ErrUnauthorized, got %v", err)
 	}
 
-	// Test case: Authenticated
-	err = p.Login(ctx, map[string]string{"token": "dummy_token"})
-	if err != nil {
-		t.Fatalf("failed to login: %v", err)
+	// Test case: Empty credentials
+	_, err = p.FetchUsageInfo(ctx, map[string]string{})
+	if !errors.Is(err, provider.ErrUnauthorized) {
+		t.Errorf("expected ErrUnauthorized, got %v", err)
 	}
 
-	usageInfo, err := p.FetchUsageInfo(ctx)
+	// Test case: Valid credentials
+	usageInfo, err := p.FetchUsageInfo(ctx, map[string]string{"token": "dummy_token"})
 	if err != nil {
 		t.Errorf("expected nil error, got %v", err)
 	}

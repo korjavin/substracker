@@ -75,22 +75,6 @@ func (h *Handler) Register(mux *http.ServeMux) {
 
 	apiMux := http.NewServeMux()
 
-	// Claude Provider
-	apiMux.HandleFunc("GET /api/providers/claude/login-info", h.claudeLoginInfo)
-	apiMux.HandleFunc("POST /api/providers/claude/login", h.claudeLogin)
-
-	// Google One Provider
-	apiMux.HandleFunc("GET /api/providers/googleone/login-info", h.googleOneLoginInfo)
-	apiMux.HandleFunc("POST /api/providers/googleone/login", h.googleOneLogin)
-
-	// Z.ai Provider
-	apiMux.HandleFunc("GET /api/providers/zai/login-info", h.zaiLoginInfo)
-	apiMux.HandleFunc("POST /api/providers/zai/login", h.zaiLogin)
-
-	// OpenAI Provider
-	apiMux.HandleFunc("GET /api/providers/openai/login-info", h.openaiLoginInfo)
-	apiMux.HandleFunc("POST /api/providers/openai/login", h.openaiLogin)
-
 	// Subscriptions
 	apiMux.HandleFunc("GET /api/subscriptions", h.listSubscriptions)
 	apiMux.HandleFunc("POST /api/subscriptions", h.createSubscription)
@@ -160,146 +144,6 @@ func writeError(w http.ResponseWriter, status int, msg string) {
 
 func (h *Handler) health(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
-}
-
-// --- Claude Provider ---
-
-func (h *Handler) claudeLoginInfo(w http.ResponseWriter, r *http.Request) {
-	writeJSON(w, http.StatusOK, map[string]string{
-		"url":          "https://claude.ai/",
-		"instructions": "Log in to claude.ai, open Developer Tools -> Application -> Cookies, and copy the value of the 'sessionKey' cookie.",
-	})
-}
-
-func (h *Handler) claudeLogin(w http.ResponseWriter, r *http.Request) {
-	var req struct {
-		SessionKey string `json:"session_key"`
-	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid request body")
-		return
-	}
-
-	err := h.claudeProvider.Login(r.Context(), map[string]string{"session_key": req.SessionKey})
-	if err != nil {
-		writeError(w, http.StatusBadRequest, err.Error())
-		return
-	}
-
-	if h.repo != nil {
-		if err := h.repo.UpsertProviderCredential(r.Context(), h.claudeProvider.Name(), "session_key", req.SessionKey); err != nil {
-			slog.Error("failed to save claude credential", "error", err)
-			writeError(w, http.StatusInternalServerError, "failed to save credentials")
-			return
-		}
-	}
-
-	writeJSON(w, http.StatusOK, map[string]string{"status": "logged_in"})
-}
-
-// --- Google One Provider ---
-
-func (h *Handler) googleOneLoginInfo(w http.ResponseWriter, r *http.Request) {
-	writeJSON(w, http.StatusOK, map[string]string{
-		"url":          "https://one.google.com/",
-		"instructions": "Log in to one.google.com, open Developer Tools -> Application -> Cookies, and copy the value of the 'SID' cookie.",
-	})
-}
-
-func (h *Handler) googleOneLogin(w http.ResponseWriter, r *http.Request) {
-	var req struct {
-		SessionCookie string `json:"session_cookie"`
-	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid request body")
-		return
-	}
-
-	err := h.googleOneProvider.Login(r.Context(), map[string]string{"session_cookie": req.SessionCookie})
-	if err != nil {
-		writeError(w, http.StatusBadRequest, err.Error())
-		return
-	}
-
-	if h.repo != nil {
-		if err := h.repo.UpsertProviderCredential(r.Context(), h.googleOneProvider.Name(), "session_cookie", req.SessionCookie); err != nil {
-			slog.Error("failed to persist google one credentials", "error", err)
-			writeError(w, http.StatusInternalServerError, "failed to save credentials")
-			return
-		}
-	}
-
-	writeJSON(w, http.StatusOK, map[string]string{"status": "logged_in"})
-}
-
-// --- Z.ai Provider ---
-
-func (h *Handler) zaiLoginInfo(w http.ResponseWriter, r *http.Request) {
-	writeJSON(w, http.StatusOK, map[string]string{
-		"url":          "https://z.ai/",
-		"instructions": "Log in to z.ai, open Developer Tools -> Application -> Cookies, and copy the value of the 'session_cookie' cookie.",
-	})
-}
-
-func (h *Handler) zaiLogin(w http.ResponseWriter, r *http.Request) {
-	var req struct {
-		SessionCookie string `json:"session_cookie"`
-	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid request body")
-		return
-	}
-
-	err := h.zaiProvider.Login(r.Context(), map[string]string{"session_cookie": req.SessionCookie})
-	if err != nil {
-		writeError(w, http.StatusBadRequest, err.Error())
-		return
-	}
-
-	// Persist the credential
-	err = h.repo.UpsertProviderCredential(r.Context(), h.zaiProvider.Name(), "session_cookie", req.SessionCookie)
-	if err != nil {
-		slog.Error("failed to persist z.ai credential", "error", err)
-		writeError(w, http.StatusInternalServerError, "failed to persist credential")
-		return
-	}
-
-	writeJSON(w, http.StatusOK, map[string]string{"status": "logged_in"})
-}
-
-// --- OpenAI Provider ---
-
-func (h *Handler) openaiLoginInfo(w http.ResponseWriter, r *http.Request) {
-	writeJSON(w, http.StatusOK, map[string]string{
-		"url":          "https://platform.openai.com/",
-		"instructions": "Log in to platform.openai.com, open Developer Tools -> Application -> Cookies, and copy the value of the '__Secure-next-auth.session-token' cookie.",
-	})
-}
-
-func (h *Handler) openaiLogin(w http.ResponseWriter, r *http.Request) {
-	var req struct {
-		SessionToken string `json:"session_token"`
-	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid request body")
-		return
-	}
-
-	err := h.openaiProvider.Login(r.Context(), map[string]string{"session_token": req.SessionToken})
-	if err != nil {
-		writeError(w, http.StatusBadRequest, err.Error())
-		return
-	}
-
-	if h.repo != nil {
-		if err := h.repo.UpsertProviderCredential(r.Context(), h.openaiProvider.Name(), "session_token", req.SessionToken); err != nil {
-			slog.Error("failed to persist openai credentials", "error", err)
-			writeError(w, http.StatusInternalServerError, "failed to save credentials")
-			return
-		}
-	}
-
-	writeJSON(w, http.StatusOK, map[string]string{"status": "logged_in"})
 }
 
 // --- Subscriptions ---
@@ -457,7 +301,13 @@ func (h *Handler) deleteSubscription(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) cachedSubscriptionUsage(w http.ResponseWriter, r *http.Request) {
-	usages, err := h.repo.ListSubscriptionUsage(r.Context())
+	user, ok := auth.UserFromContext(r.Context())
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+
+	usages, err := h.repo.ListSubscriptionUsageByUser(r.Context(), user.ID)
 	if err != nil {
 		slog.Error("list cached sub usage", "error", err)
 		writeError(w, http.StatusInternalServerError, "failed to get cached sub usage")
@@ -510,14 +360,7 @@ func (h *Handler) refreshSubscriptionsUsage(w http.ResponseWriter, r *http.Reque
 			"session_cookie": sub.AuthToken,
 		}
 
-		err := p.Login(r.Context(), creds)
-		if err != nil {
-			slog.Error("failed to login provider for sub", "subID", sub.ID, "error", err)
-			hasReloginError = true
-			continue
-		}
-
-		info, err := p.FetchUsageInfo(r.Context())
+		info, err := p.FetchUsageInfo(r.Context(), creds)
 		if err != nil {
 			slog.Error("failed to fetch usage info for sub", "subID", sub.ID, "error", err)
 			if errors.Is(err, provider.ErrUnauthorized) {

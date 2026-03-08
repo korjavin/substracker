@@ -19,9 +19,8 @@ type mockProvider struct {
 	err       error
 }
 
-func (m *mockProvider) Name() string                                             { return m.name }
-func (m *mockProvider) Login(ctx context.Context, creds map[string]string) error { return nil }
-func (m *mockProvider) FetchUsageInfo(ctx context.Context) (*provider.UsageInfo, error) {
+func (m *mockProvider) Name() string { return m.name }
+func (m *mockProvider) FetchUsageInfo(ctx context.Context, creds map[string]string) (*provider.UsageInfo, error) {
 	if m.err != nil {
 		return nil, m.err
 	}

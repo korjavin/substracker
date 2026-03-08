@@ -19,38 +19,10 @@ func TestGoogleOneProvider_Name(t *testing.T) {
 	}
 }
 
-func TestGoogleOneProvider_Login(t *testing.T) {
-	p := NewGoogleOneProvider()
-
-	// Test successful login
-	err := p.Login(context.Background(), map[string]string{"session_cookie": "test_cookie_123"})
-	if err != nil {
-		t.Errorf("unexpected error on valid login: %v", err)
-	}
-
-	p.mu.RLock()
-	if p.sessionCookie != "test_cookie_123" {
-		t.Errorf("expected sessionCookie to be 'test_cookie_123', got '%s'", p.sessionCookie)
-	}
-	p.mu.RUnlock()
-
-	// Test missing credential
-	err = p.Login(context.Background(), map[string]string{})
-	if err == nil || !strings.Contains(err.Error(), "missing or empty session_cookie") {
-		t.Errorf("expected missing session_cookie error, got %v", err)
-	}
-
-	// Test empty credential
-	err = p.Login(context.Background(), map[string]string{"session_cookie": ""})
-	if err == nil || !strings.Contains(err.Error(), "missing or empty session_cookie") {
-		t.Errorf("expected empty session_cookie error, got %v", err)
-	}
-}
-
 func TestGoogleOneProvider_FetchUsageInfo(t *testing.T) {
 	t.Run("NoSessionCookie", func(t *testing.T) {
 		p := NewGoogleOneProvider()
-		_, err := p.FetchUsageInfo(context.Background())
+		_, err := p.FetchUsageInfo(context.Background(), nil)
 		if err == nil || !errors.Is(err, provider.ErrUnauthorized) {
 			t.Errorf("expected ErrUnauthorized when no cookie is set, got %v", err)
 		}
@@ -64,9 +36,8 @@ func TestGoogleOneProvider_FetchUsageInfo(t *testing.T) {
 
 		p := NewGoogleOneProvider()
 		p.baseURL = ts.URL
-		p.sessionCookie = "invalid_cookie"
 
-		_, err := p.FetchUsageInfo(context.Background())
+		_, err := p.FetchUsageInfo(context.Background(), map[string]string{"session_cookie": "invalid_cookie"})
 		if err == nil || !errors.Is(err, provider.ErrUnauthorized) {
 			t.Errorf("expected ErrUnauthorized on 401 response, got %v", err)
 		}
@@ -80,9 +51,8 @@ func TestGoogleOneProvider_FetchUsageInfo(t *testing.T) {
 
 		p := NewGoogleOneProvider()
 		p.baseURL = ts.URL
-		p.sessionCookie = "valid_cookie"
 
-		_, err := p.FetchUsageInfo(context.Background())
+		_, err := p.FetchUsageInfo(context.Background(), map[string]string{"session_cookie": "valid_cookie"})
 		if err == nil || !strings.Contains(err.Error(), "unexpected status") {
 			t.Errorf("expected unexpected status error on 500 response, got %v", err)
 		}
@@ -100,9 +70,8 @@ func TestGoogleOneProvider_FetchUsageInfo(t *testing.T) {
 
 		p := NewGoogleOneProvider()
 		p.baseURL = ts.URL
-		p.sessionCookie = "valid_cookie"
 
-		info, err := p.FetchUsageInfo(context.Background())
+		info, err := p.FetchUsageInfo(context.Background(), map[string]string{"session_cookie": "valid_cookie"})
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -125,9 +94,8 @@ func TestGoogleOneProvider_FetchUsageInfo(t *testing.T) {
 
 		p := NewGoogleOneProvider()
 		p.baseURL = ts.URL
-		p.sessionCookie = "valid_cookie"
 
-		_, err := p.FetchUsageInfo(context.Background())
+		_, err := p.FetchUsageInfo(context.Background(), map[string]string{"session_cookie": "valid_cookie"})
 		if err == nil || !strings.Contains(err.Error(), "failed to decode subscriptions") {
 			t.Errorf("expected JSON decode error, got %v", err)
 		}
@@ -142,9 +110,8 @@ func TestGoogleOneProvider_FetchUsageInfo(t *testing.T) {
 
 		p := NewGoogleOneProvider()
 		p.baseURL = ts.URL
-		p.sessionCookie = "valid_cookie"
 
-		_, err := p.FetchUsageInfo(context.Background())
+		_, err := p.FetchUsageInfo(context.Background(), map[string]string{"session_cookie": "valid_cookie"})
 		if err == nil || !strings.Contains(err.Error(), "no end_date found") {
 			t.Errorf("expected no end_date found error, got %v", err)
 		}

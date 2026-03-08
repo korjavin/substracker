@@ -19,48 +19,12 @@ func TestClaudeProvider_Name(t *testing.T) {
 	}
 }
 
-func TestClaudeProvider_Login(t *testing.T) {
-	p := NewClaudeProvider()
-	ctx := context.Background()
-
-	// Empty credentials
-	err := p.Login(ctx, map[string]string{})
-	if err == nil {
-		t.Error("expected error for empty credentials, got nil")
-	}
-
-	// Missing session_key
-	err = p.Login(ctx, map[string]string{"other_key": "value"})
-	if err == nil {
-		t.Error("expected error for missing session_key, got nil")
-	}
-
-	// Empty session_key
-	err = p.Login(ctx, map[string]string{"session_key": ""})
-	if err == nil {
-		t.Error("expected error for empty session_key, got nil")
-	}
-
-	// Valid session_key
-	validKey := "session_cookie_value"
-	err = p.Login(ctx, map[string]string{"session_key": validKey})
-	if err != nil {
-		t.Errorf("expected no error for valid session_key, got %v", err)
-	}
-	p.mu.RLock()
-	gotKey := p.sessionKey
-	p.mu.RUnlock()
-	if gotKey != validKey {
-		t.Errorf("expected sessionKey to be '%s', got '%s'", validKey, gotKey)
-	}
-}
-
 func TestClaudeProvider_FetchUsageInfo(t *testing.T) {
 	ctx := context.Background()
 
 	t.Run("EmptySessionKey", func(t *testing.T) {
 		p := NewClaudeProvider()
-		_, err := p.FetchUsageInfo(ctx)
+		_, err := p.FetchUsageInfo(ctx, nil)
 		if !errors.Is(err, provider.ErrUnauthorized) {
 			t.Errorf("expected ErrUnauthorized for empty session key, got %v", err)
 		}
@@ -78,9 +42,8 @@ func TestClaudeProvider_FetchUsageInfo(t *testing.T) {
 
 		p := NewClaudeProvider()
 		p.baseURL = server.URL
-		_ = p.Login(ctx, map[string]string{"session_key": "invalid_key"})
 
-		_, err := p.FetchUsageInfo(ctx)
+		_, err := p.FetchUsageInfo(ctx, map[string]string{"session_key": "invalid_key"})
 		if !errors.Is(err, provider.ErrUnauthorized) {
 			t.Errorf("expected ErrUnauthorized, got %v", err)
 		}
@@ -98,9 +61,8 @@ func TestClaudeProvider_FetchUsageInfo(t *testing.T) {
 
 		p := NewClaudeProvider()
 		p.baseURL = server.URL
-		_ = p.Login(ctx, map[string]string{"session_key": "valid_key"})
 
-		_, err := p.FetchUsageInfo(ctx)
+		_, err := p.FetchUsageInfo(ctx, map[string]string{"session_key": "valid_key"})
 		if err == nil || err.Error() != "unexpected status fetching organizations: 500" {
 			t.Errorf("expected unexpected status error, got %v", err)
 		}
@@ -119,9 +81,8 @@ func TestClaudeProvider_FetchUsageInfo(t *testing.T) {
 
 		p := NewClaudeProvider()
 		p.baseURL = server.URL
-		_ = p.Login(ctx, map[string]string{"session_key": "valid_key"})
 
-		_, err := p.FetchUsageInfo(ctx)
+		_, err := p.FetchUsageInfo(ctx, map[string]string{"session_key": "valid_key"})
 		if err == nil || err.Error() != "no organizations found" {
 			t.Errorf("expected no organizations found error, got %v", err)
 		}
@@ -144,9 +105,8 @@ func TestClaudeProvider_FetchUsageInfo(t *testing.T) {
 
 		p := NewClaudeProvider()
 		p.baseURL = server.URL
-		_ = p.Login(ctx, map[string]string{"session_key": "invalid_key"})
 
-		_, err := p.FetchUsageInfo(ctx)
+		_, err := p.FetchUsageInfo(ctx, map[string]string{"session_key": "invalid_key"})
 		if !errors.Is(err, provider.ErrUnauthorized) {
 			t.Errorf("expected ErrUnauthorized, got %v", err)
 		}
@@ -169,9 +129,8 @@ func TestClaudeProvider_FetchUsageInfo(t *testing.T) {
 
 		p := NewClaudeProvider()
 		p.baseURL = server.URL
-		_ = p.Login(ctx, map[string]string{"session_key": "valid_key"})
 
-		_, err := p.FetchUsageInfo(ctx)
+		_, err := p.FetchUsageInfo(ctx, map[string]string{"session_key": "valid_key"})
 		if err == nil || err.Error() != "unexpected status fetching billing info: 500" {
 			t.Errorf("expected unexpected status error, got %v", err)
 		}
@@ -211,9 +170,8 @@ func TestClaudeProvider_FetchUsageInfo(t *testing.T) {
 
 		p := NewClaudeProvider()
 		p.baseURL = server.URL
-		_ = p.Login(ctx, map[string]string{"session_key": "valid_key"})
 
-		info, err := p.FetchUsageInfo(ctx)
+		info, err := p.FetchUsageInfo(ctx, map[string]string{"session_key": "valid_key"})
 		if err != nil {
 			t.Fatalf("expected no error, got %v", err)
 		}
@@ -259,9 +217,8 @@ func TestClaudeProvider_FetchUsageInfo(t *testing.T) {
 
 		p := NewClaudeProvider()
 		p.baseURL = server.URL
-		_ = p.Login(ctx, map[string]string{"session_key": "valid_key"})
 
-		info, err := p.FetchUsageInfo(ctx)
+		info, err := p.FetchUsageInfo(ctx, map[string]string{"session_key": "valid_key"})
 		if err != nil {
 			t.Fatalf("expected no error, got %v", err)
 		}
@@ -307,9 +264,8 @@ func TestClaudeProvider_FetchUsageInfo(t *testing.T) {
 
 		p := NewClaudeProvider()
 		p.baseURL = server.URL
-		_ = p.Login(ctx, map[string]string{"session_key": "valid_key"})
 
-		info, err := p.FetchUsageInfo(ctx)
+		info, err := p.FetchUsageInfo(ctx, map[string]string{"session_key": "valid_key"})
 		if err != nil {
 			t.Fatalf("expected no error, got %v", err)
 		}
@@ -346,9 +302,8 @@ func TestClaudeProvider_FetchUsageInfo(t *testing.T) {
 
 		p := NewClaudeProvider()
 		p.baseURL = server.URL
-		_ = p.Login(ctx, map[string]string{"session_key": "valid_key"})
 
-		_, err := p.FetchUsageInfo(ctx)
+		_, err := p.FetchUsageInfo(ctx, map[string]string{"session_key": "valid_key"})
 		if !errors.Is(err, provider.ErrUnauthorized) {
 			t.Errorf("expected ErrUnauthorized, got %v", err)
 		}
@@ -377,9 +332,8 @@ func TestClaudeProvider_FetchUsageInfo(t *testing.T) {
 
 		p := NewClaudeProvider()
 		p.baseURL = server.URL
-		_ = p.Login(ctx, map[string]string{"session_key": "valid_key"})
 
-		_, err := p.FetchUsageInfo(ctx)
+		_, err := p.FetchUsageInfo(ctx, map[string]string{"session_key": "valid_key"})
 		if err == nil || err.Error() != "unexpected status fetching org info: 500" {
 			t.Errorf("expected unexpected status error, got %v", err)
 		}
@@ -404,9 +358,8 @@ func TestClaudeProvider_FetchUsageInfo(t *testing.T) {
 
 		p := NewClaudeProvider()
 		p.baseURL = server.URL
-		_ = p.Login(ctx, map[string]string{"session_key": "valid_key"})
 
-		_, err := p.FetchUsageInfo(ctx)
+		_, err := p.FetchUsageInfo(ctx, map[string]string{"session_key": "valid_key"})
 		if err == nil || err.Error() != "no end_date found in billing info" {
 			t.Errorf("expected no end_date error, got %v", err)
 		}

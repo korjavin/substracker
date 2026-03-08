@@ -282,10 +282,13 @@ func (q *Queries) UpsertSubscriptionUsage(ctx context.Context, arg UpsertSubscri
 	return err
 }
 
-func (q *Queries) ListSubscriptionUsage(ctx context.Context) ([]SubscriptionUsage, error) {
+func (q *Queries) ListSubscriptionUsageByUser(ctx context.Context, userID int64) ([]SubscriptionUsage, error) {
 	rows, err := q.db.QueryContext(ctx,
-		`SELECT subscription_id, current_usage_seconds, total_limit_seconds, is_blocked, fetched_at
-		 FROM subscription_usage`,
+		`SELECT su.subscription_id, su.current_usage_seconds, su.total_limit_seconds, su.is_blocked, su.fetched_at
+		 FROM subscription_usage su
+		 JOIN subscriptions s ON su.subscription_id = s.id
+		 WHERE s.user_id = ?`,
+		userID,
 	)
 	if err != nil {
 		return nil, err

@@ -2,8 +2,10 @@ package openaiprovider
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/korjavin/substracker/internal/provider"
@@ -16,47 +18,20 @@ func TestOpenAIProvider_Name(t *testing.T) {
 	}
 }
 
-func TestOpenAIProvider_Login(t *testing.T) {
-	p := NewOpenAIProvider()
-
-	err := p.Login(context.Background(), map[string]string{})
-	if err == nil {
-		t.Error("expected error for empty credentials, got nil")
-	}
-
-	err = p.Login(context.Background(), map[string]string{"session_token": ""})
-	if err == nil {
-		t.Error("expected error for empty token, got nil")
-	}
-
-	err = p.Login(context.Background(), map[string]string{"session_token": "token123"})
-	if err != nil {
-		t.Errorf("expected nil error, got %v", err)
-	}
-
-	p.mu.RLock()
-	token := p.sessionToken
-	p.mu.RUnlock()
-
-	if token != "token123" {
-		t.Errorf("expected token123, got %s", token)
-	}
-}
-
 func TestOpenAIProvider_FetchUsageInfo(t *testing.T) {
 	tests := []struct {
-		name         string
-		token        string
-		handler      http.HandlerFunc
-		wantError    bool
+		name             string
+		token            string
+		handler          http.HandlerFunc
+		wantError        bool
 		wantUnauthorized bool
-		wantTime     bool
+		wantTime         bool
 	}{
 		{
-			name:      "unauthorized no token",
-			token:     "",
-			handler:   func(w http.ResponseWriter, r *http.Request) {},
-			wantError: true,
+			name:             "unauthorized no token",
+			token:            "",
+			handler:          func(w http.ResponseWriter, r *http.Request) {},
+			wantError:        true,
 			wantUnauthorized: true,
 		},
 		{
@@ -119,17 +94,19 @@ func TestOpenAIProvider_FetchUsageInfo(t *testing.T) {
 
 			p := NewOpenAIProvider()
 			p.baseURL = server.URL
+
+			creds := map[string]string{}
 			if tt.token != "" {
-				p.Login(context.Background(), map[string]string{"session_token": tt.token})
+				creds["session_token"] = tt.token
 			}
 
-			info, err := p.FetchUsageInfo(context.Background())
+			info, err := p.FetchUsageInfo(context.Background(), creds)
 
 			if tt.wantError {
 				if err == nil {
 					t.Errorf("expected error, got nil")
 				}
-				if tt.wantUnauthorized && err != provider.ErrUnauthorized && err.Error() != "openaiprovider: unauthorized: relogin required" {
+				if tt.wantUnauthorized && !errors.Is(err, provider.ErrUnauthorized) && !strings.Contains(err.Error(), "unauthorized") {
 					t.Errorf("expected unauthorized error, got %v", err)
 				}
 			} else {

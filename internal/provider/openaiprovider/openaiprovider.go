@@ -3,7 +3,6 @@ package openaiprovider
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"net/http"
 	"sync"
@@ -14,10 +13,9 @@ import (
 
 // OpenAIProvider implements the Provider interface for OpenAI/Codex.
 type OpenAIProvider struct {
-	mu           sync.RWMutex
-	sessionToken string
-	baseURL      string
-	httpClient   *http.Client
+	mu         sync.RWMutex
+	baseURL    string
+	httpClient *http.Client
 }
 
 // NewOpenAIProvider creates a new instance of OpenAIProvider.
@@ -35,19 +33,6 @@ func (p *OpenAIProvider) Name() string {
 	return "OpenAI"
 }
 
-// Login authenticates with OpenAI using the provided credentials.
-func (p *OpenAIProvider) Login(ctx context.Context, credentials map[string]string) error {
-	sessionToken, ok := credentials["session_token"]
-	if !ok || sessionToken == "" {
-		return errors.New("missing or empty session_token")
-	}
-
-	p.mu.Lock()
-	p.sessionToken = sessionToken
-	p.mu.Unlock()
-	return nil
-}
-
 type subscriptionPlan struct {
 	ID string `json:"id"`
 }
@@ -60,16 +45,18 @@ type billingSubscription struct {
 }
 
 // FetchUsageInfo retrieves the current usage information from OpenAI.
-func (p *OpenAIProvider) FetchUsageInfo(ctx context.Context) (*provider.UsageInfo, error) {
-	p.mu.RLock()
-	sessionToken := p.sessionToken
-	p.mu.RUnlock()
-
+func (p *OpenAIProvider) FetchUsageInfo(ctx context.Context, credentials map[string]string) (*provider.UsageInfo, error) {
+	sessionToken := credentials["session_token"]
 	if sessionToken == "" {
 		return nil, fmt.Errorf("openaiprovider: %w", provider.ErrUnauthorized)
 	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, p.baseURL+"/dashboard/billing/subscription", nil)
+	p.mu.RLock()
+	httpClient := p.httpClient
+	baseURL := p.baseURL
+	p.mu.RUnlock()
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, baseURL+"/dashboard/billing/subscription", nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
@@ -80,7 +67,7 @@ func (p *OpenAIProvider) FetchUsageInfo(ctx context.Context) (*provider.UsageInf
 	req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64)")
 	req.Header.Set("Accept", "application/json")
 
-	resp, err := p.httpClient.Do(req)
+	resp, err := httpClient.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch billing subscription: %w", err)
 	}

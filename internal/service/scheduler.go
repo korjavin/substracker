@@ -129,13 +129,7 @@ func (s *Scheduler) pollQuota(ctx context.Context) {
 			"session_cookie": sub.AuthToken,
 		}
 
-		err := p.Login(ctx, creds)
-		if err != nil {
-			s.logger.Error("scheduler: provider login for sub", "subID", sub.ID, "error", err)
-			continue
-		}
-
-		info, err := p.FetchUsageInfo(ctx)
+		info, err := p.FetchUsageInfo(ctx, creds)
 		if err != nil {
 			if errors.Is(err, provider.ErrUnauthorized) {
 				s.logger.Debug("provider unauthorized, skipping quota poll for sub", "subID", sub.ID, "provider", p.Name())
