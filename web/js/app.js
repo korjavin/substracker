@@ -136,6 +136,25 @@ function renderFetchResult(res, name) {
     `;
   } else {
     renderUsage({
+<<<<<<< Updated upstream
+      provider_name: 'Claude',
+      current_usage_seconds: data.CurrentUsageSeconds || 0,
+      total_limit_seconds: data.TotalLimitSeconds || 0,
+      is_blocked: data.IsBlocked || false,
+      fetched_at: new Date().toISOString(),
+      session_usage_pct: data.session_usage_pct,
+      session_resets_at: data.session_resets_at,
+      weekly_usage_pct: data.weekly_usage_pct,
+      weekly_resets_at: data.weekly_resets_at
+    });
+  } catch (e) {
+    if (e.message.includes('relogin_required')) {
+      el.innerHTML = `<p style="font-size:13px;color:var(--yellow)">Login required. <a href="#" onclick="openSettingsModal(); return false;" style="color:var(--accent);">Go to settings</a> to update your session key.</p>`;
+    } else {
+      el.innerHTML = `<p style="font-size:13px;color:var(--red)">Error: ${e.message}</p>`;
+    }
+  } finally {
+    btn.disabled = false;
       provider_name: name,
       current_usage_seconds: res.CurrentUsageSeconds || 0,
       total_limit_seconds: res.TotalLimitSeconds || 0,
@@ -146,6 +165,7 @@ function renderFetchResult(res, name) {
       weekly_usage_pct: res.weekly_usage_pct,
       weekly_resets_at: res.weekly_resets_at
     });
+>>>>>>> Stashed changes
   }
 }
 
