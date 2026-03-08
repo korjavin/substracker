@@ -238,6 +238,8 @@ tr:hover td { background: rgba(255,98,0,0.04); }
 }
 .detail-footer .btn { flex: 1; justify-content: center; }
 
+#detail-backdrop { z-index: 100; }
+
 /* Modal */
 .modal-backdrop {
   display: none;
