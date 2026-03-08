@@ -126,6 +126,19 @@ func (h *Handler) claudeLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+		if h.repo != nil {
+			err = h.repo.UpsertProviderCredential(r.Context(), repository.UpsertProviderCredentialParams{
+				ProviderName:    h.claudeProvider.Name(),
+				CredentialKey:   "session_key",
+				CredentialValue: req.SessionKey,
+			})
+			if err != nil {
+				slog.Error("failed to persist claude credentials", "error", err)
+				writeError(w, http.StatusInternalServerError, "failed to save credentials")
+				return
+			}
+		}
+
 	writeJSON(w, http.StatusOK, map[string]string{"status": "logged_in"})
 }
 
@@ -176,6 +189,19 @@ func (h *Handler) googleOneLogin(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
+
+		if h.repo != nil {
+			err = h.repo.UpsertProviderCredential(r.Context(), repository.UpsertProviderCredentialParams{
+				ProviderName:    h.googleOneProvider.Name(),
+				CredentialKey:   "session_cookie",
+				CredentialValue: req.SessionCookie,
+			})
+			if err != nil {
+				slog.Error("failed to persist google one credentials", "error", err)
+				writeError(w, http.StatusInternalServerError, "failed to save credentials")
+				return
+			}
+		}
 
 	writeJSON(w, http.StatusOK, map[string]string{"status": "logged_in"})
 }
