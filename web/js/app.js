@@ -83,11 +83,15 @@ async function refreshUsage() {
       current_usage_seconds: data.CurrentUsageSeconds || 0,
       total_limit_seconds: data.TotalLimitSeconds || 0,
       is_blocked: data.IsBlocked || false,
-      fetched_at: new Date().toISOString()
+      fetched_at: new Date().toISOString(),
+      session_usage_pct: data.session_usage_pct,
+      session_resets_at: data.session_resets_at,
+      weekly_usage_pct: data.weekly_usage_pct,
+      weekly_resets_at: data.weekly_resets_at
     });
   } catch (e) {
     if (e.message.includes('relogin_required')) {
-      el.innerHTML = `<p style="font-size:13px;color:var(--yellow)">Login required. Go to settings or run login script.</p>`;
+      el.innerHTML = `<p style="font-size:13px;color:var(--yellow)">Login required. <a href="#" onclick="openSettingsModal(); return false;" style="color:var(--accent);">Go to settings</a> to update your session key.</p>`;
     } else {
       el.innerHTML = `<p style="font-size:13px;color:var(--red)">Error: ${e.message}</p>`;
     }
@@ -97,10 +101,82 @@ async function refreshUsage() {
 }
 
 document.getElementById('refresh-usage-btn').addEventListener('click', refreshUsage);
+document.getElementById('settings-btn').addEventListener('click', openSettingsModal);
+
+// ---- Settings Modal ----
+const settingsBackdrop = document.getElementById('settings-backdrop');
+const settingsForm = document.getElementById('settings-form');
+
+function openSettingsModal() {
+  settingsBackdrop.style.display = 'flex';
+  document.getElementById('settings-session-key').focus();
+}
+
+function closeSettingsModal() {
+  settingsBackdrop.style.display = 'none';
+  settingsForm.reset();
+}
+
+document.getElementById('settings-cancel').addEventListener('click', closeSettingsModal);
+settingsBackdrop.addEventListener('click', e => { if (e.target === settingsBackdrop) closeSettingsModal(); });
+
+settingsForm.addEventListener('submit', async e => {
+  e.preventDefault();
+  const sessionKey = document.getElementById('settings-session-key').value.trim();
+  const btn = document.getElementById('settings-save');
+  btn.disabled = true;
+  try {
+    await api('POST', '/api/providers/claude/login', { session_key: sessionKey });
+    closeSettingsModal();
+    refreshUsage();
+  } catch (err) {
+    alert('Failed to save session key: ' + err.message);
+  } finally {
+    btn.disabled = false;
+  }
+});
 
 function renderUsage(u) {
   const el = document.getElementById('usage-content');
   const percent = u.total_limit_seconds > 0 ? Math.min(100, (u.current_usage_seconds / u.total_limit_seconds) * 100) : 0;
+
+  // If we have detailed Claude limits (session/weekly pct)
+  if (u.session_usage_pct !== undefined && u.weekly_usage_pct !== undefined) {
+    const sessionPct = Math.min(100, Math.round(u.session_usage_pct * 100));
+    const weeklyPct = Math.min(100, Math.round(u.weekly_usage_pct * 100));
+    const isSessionDanger = sessionPct > 90 || u.is_blocked;
+    const isWeeklyDanger = weeklyPct > 90 || u.is_blocked;
+
+    const sResets = new Date(u.session_resets_at);
+    const wResets = new Date(u.weekly_resets_at);
+
+    const blockedBadge = u.is_blocked ? `<span class="badge-blocked">BLOCKED</span>` : '';
+    const d = new Date(u.fetched_at);
+
+    el.innerHTML = `
+      <div style="font-size:14px; font-weight: 500; margin-bottom: 8px;">
+        ${esc(u.provider_name)} ${blockedBadge}
+      </div>
+
+      <div style="font-size:13px; color:var(--text); margin-bottom:4px;">Current session (${sessionPct}%)</div>
+      <div class="usage-bar-container">
+        <div class="usage-bar ${isSessionDanger ? 'danger' : ''}" style="width: ${sessionPct}%"></div>
+      </div>
+      <div class="usage-details" style="margin-bottom:12px">
+        <span>Resets in: ${sResets.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
+      </div>
+
+      <div style="font-size:13px; color:var(--text); margin-bottom:4px;">Weekly limit (${weeklyPct}%)</div>
+      <div class="usage-bar-container">
+        <div class="usage-bar ${isWeeklyDanger ? 'danger' : ''}" style="width: ${weeklyPct}%"></div>
+      </div>
+      <div class="usage-details">
+        <span>Resets: ${formatDate(wResets)} ${wResets.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
+        <span>Checked: ${d.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
+      </div>
+    `;
+    return;
+  }
 
   // Claude's API might not provide exact numbers, but gives IsBlocked flag.
   // If we only have IsBlocked flag, just show status.

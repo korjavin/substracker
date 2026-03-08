@@ -121,6 +121,12 @@ func (h *Handler) claudeLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if err := h.repo.UpsertProviderCredential(r.Context(), h.claudeProvider.Name(), "session_key", req.SessionKey); err != nil {
+		slog.Error("failed to save claude credential", "error", err)
+		writeError(w, http.StatusInternalServerError, "failed to save credentials")
+		return
+	}
+
 	writeJSON(w, http.StatusOK, map[string]string{"status": "logged_in"})
 }
 
