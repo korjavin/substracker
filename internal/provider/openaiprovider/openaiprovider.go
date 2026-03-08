@@ -109,26 +109,62 @@ func (p *OpenAIProvider) FetchUsageInfo(ctx context.Context, credentials map[str
 	var totalLimitSeconds int64
 	var isBlocked bool
 
-	if usage.RateLimit != nil && usage.RateLimit.PrimaryWindow != nil {
-		window := usage.RateLimit.PrimaryWindow
+	if usage.RateLimit != nil {
+		// Check both primary and secondary windows.
+		// Use primary window for metrics if available.
+		// If either window indicates blocking, set isBlocked to true.
 
-		if window.ResetAt != nil {
-			resetDate = time.Unix(int64(*window.ResetAt), 0)
-		} else if window.ResetAfterSeconds != nil {
-			resetDate = time.Now().Add(time.Duration(*window.ResetAfterSeconds) * time.Second)
+		if usage.RateLimit.PrimaryWindow != nil {
+			window := usage.RateLimit.PrimaryWindow
+
+			if window.ResetAt != nil {
+				resetDate = time.Unix(int64(*window.ResetAt), 0)
+			} else if window.ResetAfterSeconds != nil {
+				resetDate = time.Now().Add(time.Duration(*window.ResetAfterSeconds) * time.Second)
+			}
+
+			if window.LimitWindowSeconds != nil {
+				totalLimitSeconds = int64(*window.LimitWindowSeconds)
+			}
+
+			if window.UsedPercent != nil && totalLimitSeconds > 0 {
+				currentUsageSeconds = int64(*window.UsedPercent * float64(totalLimitSeconds))
+				if *window.UsedPercent >= 1.0 {
+					isBlocked = true
+				}
+			}
 		}
 
-		if window.LimitWindowSeconds != nil {
-			totalLimitSeconds = int64(*window.LimitWindowSeconds)
-		}
+		if usage.RateLimit.SecondaryWindow != nil {
+			window := usage.RateLimit.SecondaryWindow
 
-		if window.UsedPercent != nil && totalLimitSeconds > 0 {
-			currentUsageSeconds = int64(*window.UsedPercent * float64(totalLimitSeconds))
-			if *window.UsedPercent >= 1.0 {
+			// If primary didn't provide reset date, try secondary
+			if resetDate.IsZero() {
+				if window.ResetAt != nil {
+					resetDate = time.Unix(int64(*window.ResetAt), 0)
+				} else if window.ResetAfterSeconds != nil {
+					resetDate = time.Now().Add(time.Duration(*window.ResetAfterSeconds) * time.Second)
+				}
+			}
+
+			// If primary didn't provide limits, try secondary
+			if totalLimitSeconds == 0 && window.LimitWindowSeconds != nil {
+				totalLimitSeconds = int64(*window.LimitWindowSeconds)
+			}
+
+			// If primary didn't provide usage, try secondary
+			if currentUsageSeconds == 0 && window.UsedPercent != nil && totalLimitSeconds > 0 {
+				currentUsageSeconds = int64(*window.UsedPercent * float64(totalLimitSeconds))
+			}
+
+			// Block if secondary is over limit, regardless of primary
+			if window.UsedPercent != nil && *window.UsedPercent >= 1.0 {
 				isBlocked = true
 			}
 		}
-	} else {
+	}
+
+	if resetDate.IsZero() {
 		// Fallback to end of the current month if no reset date is provided
 		now := time.Now()
 		nextMonth := time.Date(now.Year(), now.Month()+1, 1, 0, 0, 0, 0, time.UTC)
