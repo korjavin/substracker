@@ -19,26 +19,48 @@ func New(db *sql.DB) *Queries {
 
 func (q *Queries) CreateSubscription(ctx context.Context, arg CreateSubscriptionParams) (Subscription, error) {
 	row := q.db.QueryRowContext(ctx,
-		`INSERT INTO subscriptions (name, service, billing_day, notes)
-		 VALUES (?, ?, ?, ?)
-		 RETURNING id, name, service, billing_day, notes, created_at, updated_at`,
-		arg.Name, arg.Service, arg.BillingDay, arg.Notes,
+		`INSERT INTO subscriptions (user_id, name, service, billing_day, notes)
+		 VALUES (?, ?, ?, ?, ?)
+		 RETURNING id, user_id, name, service, billing_day, notes, created_at, updated_at`,
+		arg.UserID, arg.Name, arg.Service, arg.BillingDay, arg.Notes,
 	)
 	return scanSubscriptionRow(row)
 }
 
-func (q *Queries) GetSubscription(ctx context.Context, id int64) (Subscription, error) {
+func (q *Queries) GetSubscription(ctx context.Context, id, userID int64) (Subscription, error) {
 	row := q.db.QueryRowContext(ctx,
-		`SELECT id, name, service, billing_day, notes, created_at, updated_at
-		 FROM subscriptions WHERE id = ? LIMIT 1`,
-		id,
+		`SELECT id, user_id, name, service, billing_day, notes, created_at, updated_at
+		 FROM subscriptions WHERE id = ? AND user_id = ? LIMIT 1`,
+		id, userID,
 	)
 	return scanSubscriptionRow(row)
 }
 
-func (q *Queries) ListSubscriptions(ctx context.Context) ([]Subscription, error) {
+func (q *Queries) ListSubscriptions(ctx context.Context, userID int64) ([]Subscription, error) {
 	rows, err := q.db.QueryContext(ctx,
-		`SELECT id, name, service, billing_day, notes, created_at, updated_at
+		`SELECT id, user_id, name, service, billing_day, notes, created_at, updated_at
+		 FROM subscriptions WHERE user_id = ? ORDER BY name`,
+		userID,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var subs []Subscription
+	for rows.Next() {
+		sub, err := scanSubscriptionRows(rows)
+		if err != nil {
+			return nil, err
+		}
+		subs = append(subs, sub)
+	}
+	return subs, rows.Err()
+}
+
+func (q *Queries) ListAllSubscriptions(ctx context.Context) ([]Subscription, error) {
+	rows, err := q.db.QueryContext(ctx,
+		`SELECT id, user_id, name, service, billing_day, notes, created_at, updated_at
 		 FROM subscriptions ORDER BY name`,
 	)
 	if err != nil {
@@ -61,15 +83,15 @@ func (q *Queries) UpdateSubscription(ctx context.Context, arg UpdateSubscription
 	row := q.db.QueryRowContext(ctx,
 		`UPDATE subscriptions
 		 SET name=?, service=?, billing_day=?, notes=?, updated_at=CURRENT_TIMESTAMP
-		 WHERE id=?
-		 RETURNING id, name, service, billing_day, notes, created_at, updated_at`,
-		arg.Name, arg.Service, arg.BillingDay, arg.Notes, arg.ID,
+		 WHERE id=? AND user_id=?
+		 RETURNING id, user_id, name, service, billing_day, notes, created_at, updated_at`,
+		arg.Name, arg.Service, arg.BillingDay, arg.Notes, arg.ID, arg.UserID,
 	)
 	return scanSubscriptionRow(row)
 }
 
-func (q *Queries) DeleteSubscription(ctx context.Context, id int64) error {
-	_, err := q.db.ExecContext(ctx, `DELETE FROM subscriptions WHERE id=?`, id)
+func (q *Queries) DeleteSubscription(ctx context.Context, id, userID int64) error {
+	_, err := q.db.ExecContext(ctx, `DELETE FROM subscriptions WHERE id=? AND user_id=?`, id, userID)
 	return err
 }
 
@@ -77,17 +99,18 @@ func (q *Queries) DeleteSubscription(ctx context.Context, id int64) error {
 
 func (q *Queries) UpsertWebPushSubscription(ctx context.Context, arg WebpushSubscriptionParams) error {
 	_, err := q.db.ExecContext(ctx,
-		`INSERT INTO webpush_subscriptions (endpoint, p256dh, auth)
-		 VALUES (?, ?, ?)
-		 ON CONFLICT(endpoint) DO UPDATE SET p256dh=excluded.p256dh, auth=excluded.auth`,
-		arg.Endpoint, arg.P256dh, arg.Auth,
+		`INSERT INTO webpush_subscriptions (user_id, endpoint, p256dh, auth)
+		 VALUES (?, ?, ?, ?)
+		 ON CONFLICT(endpoint) DO UPDATE SET user_id=excluded.user_id, p256dh=excluded.p256dh, auth=excluded.auth`,
+		arg.UserID, arg.Endpoint, arg.P256dh, arg.Auth,
 	)
 	return err
 }
 
-func (q *Queries) ListWebPushSubscriptions(ctx context.Context) ([]WebpushSubscription, error) {
+func (q *Queries) ListWebPushSubscriptions(ctx context.Context, userID int64) ([]WebpushSubscription, error) {
 	rows, err := q.db.QueryContext(ctx,
-		`SELECT id, endpoint, p256dh, auth, created_at FROM webpush_subscriptions`,
+		`SELECT id, user_id, endpoint, p256dh, auth, created_at FROM webpush_subscriptions WHERE user_id=?`,
+		userID,
 	)
 	if err != nil {
 		return nil, err
@@ -98,7 +121,7 @@ func (q *Queries) ListWebPushSubscriptions(ctx context.Context) ([]WebpushSubscr
 	for rows.Next() {
 		var s WebpushSubscription
 		var createdAt string
-		if err := rows.Scan(&s.ID, &s.Endpoint, &s.P256dh, &s.Auth, &createdAt); err != nil {
+		if err := rows.Scan(&s.ID, &s.UserID, &s.Endpoint, &s.P256dh, &s.Auth, &createdAt); err != nil {
 			return nil, err
 		}
 		s.CreatedAt = parseTime(createdAt)
@@ -107,24 +130,25 @@ func (q *Queries) ListWebPushSubscriptions(ctx context.Context) ([]WebpushSubscr
 	return subs, rows.Err()
 }
 
-func (q *Queries) DeleteWebPushSubscription(ctx context.Context, endpoint string) error {
-	_, err := q.db.ExecContext(ctx, `DELETE FROM webpush_subscriptions WHERE endpoint=?`, endpoint)
+func (q *Queries) DeleteWebPushSubscription(ctx context.Context, endpoint string, userID int64) error {
+	_, err := q.db.ExecContext(ctx, `DELETE FROM webpush_subscriptions WHERE endpoint=? AND user_id=?`, endpoint, userID)
 	return err
 }
 
 // --- Telegram Chats ---
 
-func (q *Queries) CreateTelegramChat(ctx context.Context, chatID string) error {
+func (q *Queries) CreateTelegramChat(ctx context.Context, chatID string, userID int64) error {
 	_, err := q.db.ExecContext(ctx,
-		`INSERT INTO telegram_chats (chat_id) VALUES (?) ON CONFLICT(chat_id) DO NOTHING`,
-		chatID,
+		`INSERT INTO telegram_chats (user_id, chat_id) VALUES (?, ?) ON CONFLICT(chat_id) DO NOTHING`,
+		userID, chatID,
 	)
 	return err
 }
 
-func (q *Queries) ListTelegramChats(ctx context.Context) ([]TelegramChat, error) {
+func (q *Queries) ListTelegramChats(ctx context.Context, userID int64) ([]TelegramChat, error) {
 	rows, err := q.db.QueryContext(ctx,
-		`SELECT id, chat_id, created_at FROM telegram_chats ORDER BY created_at`,
+		`SELECT id, user_id, chat_id, created_at FROM telegram_chats WHERE user_id=? ORDER BY created_at`,
+		userID,
 	)
 	if err != nil {
 		return nil, err
@@ -135,7 +159,7 @@ func (q *Queries) ListTelegramChats(ctx context.Context) ([]TelegramChat, error)
 	for rows.Next() {
 		var c TelegramChat
 		var createdAt string
-		if err := rows.Scan(&c.ID, &c.ChatID, &createdAt); err != nil {
+		if err := rows.Scan(&c.ID, &c.UserID, &c.ChatID, &createdAt); err != nil {
 			return nil, err
 		}
 		c.CreatedAt = parseTime(createdAt)
@@ -144,8 +168,8 @@ func (q *Queries) ListTelegramChats(ctx context.Context) ([]TelegramChat, error)
 	return chats, rows.Err()
 }
 
-func (q *Queries) DeleteTelegramChat(ctx context.Context, chatID string) error {
-	_, err := q.db.ExecContext(ctx, `DELETE FROM telegram_chats WHERE chat_id=?`, chatID)
+func (q *Queries) DeleteTelegramChat(ctx context.Context, chatID string, userID int64) error {
+	_, err := q.db.ExecContext(ctx, `DELETE FROM telegram_chats WHERE chat_id=? AND user_id=?`, chatID, userID)
 	return err
 }
 
@@ -248,10 +272,14 @@ func (q *Queries) CreateNotificationLog(ctx context.Context, arg CreateNotificat
 	return err
 }
 
-func (q *Queries) ListNotificationLogs(ctx context.Context) ([]NotificationLog, error) {
+func (q *Queries) ListNotificationLogs(ctx context.Context, userID int64) ([]NotificationLog, error) {
 	rows, err := q.db.QueryContext(ctx,
-		`SELECT id, subscription_id, channel, message, sent_at
-		 FROM notification_log ORDER BY sent_at DESC LIMIT 100`,
+		`SELECT nl.id, nl.subscription_id, nl.channel, nl.message, nl.sent_at
+		 FROM notification_log nl
+		 JOIN subscriptions s ON nl.subscription_id = s.id
+		 WHERE s.user_id = ?
+		 ORDER BY nl.sent_at DESC LIMIT 100`,
+		userID,
 	)
 	if err != nil {
 		return nil, err
@@ -276,7 +304,7 @@ func (q *Queries) ListNotificationLogs(ctx context.Context) ([]NotificationLog, 
 func scanSubscriptionRow(row *sql.Row) (Subscription, error) {
 	var s Subscription
 	var createdAt, updatedAt string
-	err := row.Scan(&s.ID, &s.Name, &s.Service, &s.BillingDay, &s.Notes, &createdAt, &updatedAt)
+	err := row.Scan(&s.ID, &s.UserID, &s.Name, &s.Service, &s.BillingDay, &s.Notes, &createdAt, &updatedAt)
 	if err != nil {
 		return s, err
 	}
@@ -288,7 +316,7 @@ func scanSubscriptionRow(row *sql.Row) (Subscription, error) {
 func scanSubscriptionRows(rows *sql.Rows) (Subscription, error) {
 	var s Subscription
 	var createdAt, updatedAt string
-	err := rows.Scan(&s.ID, &s.Name, &s.Service, &s.BillingDay, &s.Notes, &createdAt, &updatedAt)
+	err := rows.Scan(&s.ID, &s.UserID, &s.Name, &s.Service, &s.BillingDay, &s.Notes, &createdAt, &updatedAt)
 	if err != nil {
 		return s, err
 	}

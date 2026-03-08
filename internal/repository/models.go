@@ -4,6 +4,7 @@ import "time"
 
 type Subscription struct {
 	ID         int64     `json:"id"`
+	UserID     int64     `json:"user_id"`
 	Name       string    `json:"name"`
 	Service    string    `json:"service"`
 	BillingDay int64     `json:"billing_day"`
@@ -14,6 +15,7 @@ type Subscription struct {
 
 type WebpushSubscription struct {
 	ID        int64     `json:"id"`
+	UserID    int64     `json:"user_id"`
 	Endpoint  string    `json:"endpoint"`
 	P256dh    string    `json:"p256dh"`
 	Auth      string    `json:"auth"`
@@ -21,6 +23,7 @@ type WebpushSubscription struct {
 }
 
 type WebpushSubscriptionParams struct {
+	UserID   int64
 	Endpoint string
 	P256dh   string
 	Auth     string
@@ -28,6 +31,7 @@ type WebpushSubscriptionParams struct {
 
 type TelegramChat struct {
 	ID        int64     `json:"id"`
+	UserID    int64     `json:"user_id"`
 	ChatID    string    `json:"chat_id"`
 	CreatedAt time.Time `json:"created_at"`
 }
@@ -41,6 +45,7 @@ type NotificationLog struct {
 }
 
 type CreateSubscriptionParams struct {
+	UserID     int64
 	Name       string
 	Service    string
 	BillingDay int64
@@ -49,6 +54,7 @@ type CreateSubscriptionParams struct {
 
 type UpdateSubscriptionParams struct {
 	ID         int64
+	UserID     int64
 	Name       string
 	Service    string
 	BillingDay int64
