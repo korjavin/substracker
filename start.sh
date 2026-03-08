@@ -12,7 +12,7 @@ source .env
 set +a
 
 export DB_PATH="${DB_PATH:-data.db}"
-export PORT="${PORT:-8080}"
+export PORT="${PORT:-5454}"
 
 echo "Starting SubsTracker on :$PORT ..."
 go run ./cmd/server

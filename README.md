@@ -19,13 +19,13 @@ cp .env.example .env
 ./start.sh
 ```
 
-Open http://localhost:8080
+Open http://localhost:5454
 
 ## Environment Variables
 
 | Variable | Description | Required |
 |---|---|---|
-| `PORT` | HTTP port (default: `8080`) | No |
+| `PORT` | HTTP port (default: `5454`) | No |
 | `DB_PATH` | SQLite file path (default: `data.db`) | No |
 | `TG_BOT_TOKEN` | Telegram bot token from @BotFather | Optional |
 | `VAPID_PUBLIC_KEY` | VAPID public key for web push | Optional |
