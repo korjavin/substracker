@@ -49,6 +49,9 @@ func TestZAIProvider_FetchUsageInfo(t *testing.T) {
 		if r.URL.Path != "/api/monitor/usage/quota/limit" {
 			t.Errorf("expected path /api/monitor/usage/quota/limit, got %s", r.URL.Path)
 		}
+		if r.Header.Get("Cookie") != "session_cookie=abc12345" {
+			t.Errorf("unexpected cookie header: %s", r.Header.Get("Cookie"))
+		}
 		if r.Header.Get("Authorization") != "Bearer abc12345" {
 			t.Errorf("unexpected auth header: %s", r.Header.Get("Authorization"))
 		}
@@ -130,6 +133,26 @@ func TestZAIProvider_FetchUsageInfo_APIError(t *testing.T) {
 		t.Errorf("expected error for 200 API error response, got nil")
 	} else if err.Error() != "api error: 404 NOT_FOUND (code: 500)" {
 		t.Errorf("expected specific api error message, got %v", err)
+	}
+}
+
+func TestZAIProvider_FetchUsageInfo_APIUnauthorizedEnvelope(t *testing.T) {
+	mockResponse := `{"code":1001,"msg":"Authentication parameter not received in Header, unable to authenticate","success":false}`
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(mockResponse))
+	}))
+	defer ts.Close()
+
+	p := NewZAIProvider()
+	p.baseURL = ts.URL
+	ctx := context.Background()
+	_ = p.Login(ctx, map[string]string{"session_cookie": "abc12345"})
+
+	_, err := p.FetchUsageInfo(ctx)
+	if err != provider.ErrUnauthorized {
+		t.Errorf("expected ErrUnauthorized, got %v", err)
 	}
 }
 

@@ -18,6 +18,8 @@ type ZAIProvider struct {
 	client        *http.Client
 }
 
+const zaiQuotaLimitPath = "/api/monitor/usage/quota/limit"
+
 func NewZAIProvider() *ZAIProvider {
 	return &ZAIProvider{
 		baseURL: "https://api.z.ai",
@@ -66,11 +68,12 @@ func (p *ZAIProvider) FetchUsageInfo(ctx context.Context) (*provider.UsageInfo, 
 		return nil, provider.ErrUnauthorized
 	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, baseURL+"/api/monitor/usage/quota/limit", nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, baseURL+zaiQuotaLimitPath, nil)
 	if err != nil {
 		return nil, fmt.Errorf("create request: %w", err)
 	}
 
+	req.Header.Set("Cookie", fmt.Sprintf("session_cookie=%s", cookie))
 	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", cookie))
 	req.Header.Set("Origin", "https://z.ai")
 	req.Header.Set("Referer", "https://z.ai/")
@@ -96,6 +99,9 @@ func (p *ZAIProvider) FetchUsageInfo(ctx context.Context) (*provider.UsageInfo, 
 	}
 
 	if usageResp.Success != nil && !*usageResp.Success {
+		if usageResp.Code == 401 || usageResp.Code == 1001 {
+			return nil, provider.ErrUnauthorized
+		}
 		return nil, fmt.Errorf("api error: %s (code: %d)", usageResp.Msg, usageResp.Code)
 	}
 
